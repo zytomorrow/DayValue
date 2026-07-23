@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Linking,
   Modal,
   ScrollView,
@@ -20,6 +19,7 @@ import { useCategories } from '../contexts/CategoriesContext';
 import { BrutalButton } from '../components';
 import { THEME } from '../utils/constants';
 import { deleteAllEntityImagesAsync } from '../utils/entityImages';
+import { alertConfirm, alertError, alertSuccess, showPixelAlert } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -166,7 +166,7 @@ export function SettingsScreen({ navigation }: Props) {
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert(failureTitle, `${failureMessage}\n\n${url}`);
+      alertError(failureTitle, `${failureMessage}\n\n${url}`);
     }
   }
 
@@ -178,7 +178,7 @@ export function SettingsScreen({ navigation }: Props) {
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert(
+      alertError(
         '无法打开邮件客户端',
         `邮箱：${FEEDBACK_EMAIL}\n\n标题：${subject}\n\n${body}`,
       );
@@ -213,13 +213,13 @@ export function SettingsScreen({ navigation }: Props) {
       }
 
       if (compareSemver(latestTag, currentVersion) <= 0) {
-        Alert.alert('已是最新版', `当前版本 ${currentVersion} 已是最新。`);
+        alertSuccess('已是最新版', `当前版本 ${currentVersion} 已是最新。`);
         return;
       }
 
       const apkUrl = pickApkDownloadUrl(json);
       if (!apkUrl) {
-        Alert.alert(
+        showPixelAlert(
           '发现新版本',
           `最新版本：${latestTag}\n未找到可直接下载的 APK 资源，请前往 GitHub Releases 页面手动下载。`,
           [
@@ -238,7 +238,7 @@ export function SettingsScreen({ navigation }: Props) {
         return;
       }
 
-      Alert.alert(
+      showPixelAlert(
         '发现新版本',
         `最新版本：${latestTag}\n将直接打开 APK 下载链接。`,
         [
@@ -255,7 +255,7 @@ export function SettingsScreen({ navigation }: Props) {
         ],
       );
     } catch {
-      Alert.alert(
+      showPixelAlert(
         '检查更新失败',
         '网络异常或 GitHub 接口不可用，请稍后重试，或手动前往 GitHub Releases 页面下载。',
         [
@@ -279,17 +279,11 @@ export function SettingsScreen({ navigation }: Props) {
   function confirmResetAllData() {
     if (resetting) return;
 
-    Alert.alert(
+    alertConfirm(
       '警告：请确认',
       '这会永久删除你的全部资产、分期、订阅和卡包记录。此操作不可恢复。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '我已了解，继续删除',
-          style: 'destructive',
-          onPress: () => void resetAllData(),
-        },
-      ],
+      () => void resetAllData(),
+      { confirmText: '我已了解，继续删除', destructive: true },
     );
   }
 
@@ -315,11 +309,11 @@ export function SettingsScreen({ navigation }: Props) {
       await initDB(db);
       await refreshCategories();
 
-      Alert.alert('已初始化', '已清除所有数据，并恢复示例配置。', [
+      showPixelAlert('已初始化', '已清除所有数据，并恢复示例配置。', [
         { text: '好的', onPress: () => navigation.popToTop() },
       ]);
     } catch {
-      Alert.alert('清除失败', '清除数据时发生错误，请重试。');
+      alertError('清除失败', '清除数据时发生错误，请重试。');
     } finally {
       setResetting(false);
     }

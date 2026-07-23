@@ -1,6 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   Modal,
   ScrollView,
@@ -34,6 +33,7 @@ import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
 import { BrutalButton, DatePickerField, EntityCover, PixelInput, StatusBadge } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
+import { alertConfirm, alertError, alertSuccess } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ItemDetail'>;
 
@@ -82,93 +82,82 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   );
 
   async function handleDelete() {
-    Alert.alert('确认删除', `确定要删除“${item?.name}”吗？此操作不可撤销。`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteEntityImageAsync(item?.image_uri);
-          await deleteOneTimeItem(db, itemId);
-          navigation.goBack();
-        },
-      },
-    ]);
+    alertConfirm('确认删除', `确定要删除“${item?.name}”吗？此操作不可撤销。`, async () => {
+      await deleteEntityImageAsync(item?.image_uri);
+      await deleteOneTimeItem(db, itemId);
+      navigation.goBack();
+    }, { confirmText: '删除', destructive: true });
   }
 
-  async function handleRedeem() {
-    Alert.alert('赎身确认', '赎身后物品将进入「买断资产」轨道，解锁日均成本正向反馈。', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '确认赎身',
-        onPress: () => {
-          if (redeemBusy) return;
-          setRedeemBusy(true);
-          setRedeemModalVisible(true);
-          redeemScale.setValue(0.9);
-          redeemShakeX.setValue(0);
-          redeemColor.setValue(0);
+  function startRedeemAnimation() {
+    setRedeemBusy(true);
+    setRedeemModalVisible(true);
+    redeemScale.setValue(0.9);
+    redeemShakeX.setValue(0);
+    redeemColor.setValue(0);
 
-          Animated.parallel([
-            Animated.sequence([
-              Animated.timing(redeemScale, {
-                toValue: 1.25,
-                duration: 320,
-                useNativeDriver: true,
-              }),
-              Animated.timing(redeemScale, {
-                toValue: 1.05,
-                duration: 180,
-                useNativeDriver: true,
-              }),
-              Animated.timing(redeemScale, {
-                toValue: 1.15,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-              Animated.timing(redeemScale, {
-                toValue: 1.0,
-                duration: 300,
-                useNativeDriver: true,
-              }),
-              Animated.delay(500),
-            ]),
-            Animated.sequence([
-              Animated.timing(redeemShakeX, { toValue: -10, duration: 70, useNativeDriver: true }),
-              Animated.timing(redeemShakeX, { toValue: 10, duration: 70, useNativeDriver: true }),
-              Animated.timing(redeemShakeX, { toValue: -8, duration: 70, useNativeDriver: true }),
-              Animated.timing(redeemShakeX, { toValue: 8, duration: 70, useNativeDriver: true }),
-              Animated.timing(redeemShakeX, { toValue: -6, duration: 70, useNativeDriver: true }),
-              Animated.timing(redeemShakeX, { toValue: 6, duration: 70, useNativeDriver: true }),
-              Animated.timing(redeemShakeX, { toValue: 0, duration: 90, useNativeDriver: true }),
-              Animated.delay(990),
-            ]),
-            Animated.sequence([
-              Animated.timing(redeemColor, { toValue: 1, duration: 900, useNativeDriver: false }),
-              Animated.delay(600),
-            ]),
-          ]).start(async ({ finished }) => {
-            if (!finished) return;
-            try {
-              await redeemOneTimeItem(db, itemId);
-              setRedeemModalVisible(false);
-              setRedeemBusy(false);
-              navigation.goBack();
-            } catch {
-              setRedeemModalVisible(false);
-              setRedeemBusy(false);
-              Alert.alert('错误', '赎身失败，请重试');
-            }
-          });
-        },
-      },
-    ]);
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(redeemScale, {
+          toValue: 1.25,
+          duration: 320,
+          useNativeDriver: true,
+        }),
+        Animated.timing(redeemScale, {
+          toValue: 1.05,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.timing(redeemScale, {
+          toValue: 1.15,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(redeemScale, {
+          toValue: 1.0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.delay(500),
+      ]),
+      Animated.sequence([
+        Animated.timing(redeemShakeX, { toValue: -10, duration: 70, useNativeDriver: true }),
+        Animated.timing(redeemShakeX, { toValue: 10, duration: 70, useNativeDriver: true }),
+        Animated.timing(redeemShakeX, { toValue: -8, duration: 70, useNativeDriver: true }),
+        Animated.timing(redeemShakeX, { toValue: 8, duration: 70, useNativeDriver: true }),
+        Animated.timing(redeemShakeX, { toValue: -6, duration: 70, useNativeDriver: true }),
+        Animated.timing(redeemShakeX, { toValue: 6, duration: 70, useNativeDriver: true }),
+        Animated.timing(redeemShakeX, { toValue: 0, duration: 90, useNativeDriver: true }),
+        Animated.delay(990),
+      ]),
+      Animated.sequence([
+        Animated.timing(redeemColor, { toValue: 1, duration: 900, useNativeDriver: false }),
+        Animated.delay(600),
+      ]),
+    ]).start(async ({ finished }) => {
+      if (!finished) return;
+      try {
+        await redeemOneTimeItem(db, itemId);
+        setRedeemModalVisible(false);
+        setRedeemBusy(false);
+        navigation.goBack();
+      } catch {
+        setRedeemModalVisible(false);
+        setRedeemBusy(false);
+        alertError('错误', '赎身失败，请重试');
+      }
+    });
+  }
+
+  function handleRedeem() {
+    if (redeemBusy) return;
+    alertConfirm('赎身确认', '赎身后物品将进入「买断资产」轨道，解锁日均成本正向反馈。', startRedeemAnimation, { confirmText: '确认赎身' });
   }
 
   async function handlePause() {
     if (!item || statusBusy) return;
     if (pauseDate > getTodayString()) {
-      Alert.alert('提示', '停用日期不能晚于今天');
+      alertError('提示', '停用日期不能晚于今天');
       return;
     }
     setStatusBusy(true);
@@ -177,7 +166,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       setPauseModalVisible(false);
       await loadItem();
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '停用失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '停用失败，请重试');
     } finally {
       setStatusBusy(false);
     }
@@ -186,7 +175,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   async function handleResume() {
     if (!item || statusBusy) return;
     if (resumeDate > getTodayString()) {
-      Alert.alert('提示', '恢复日期不能晚于今天');
+      alertError('提示', '恢复日期不能晚于今天');
       return;
     }
     setStatusBusy(true);
@@ -195,7 +184,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       setResumeModalVisible(false);
       await loadItem();
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '恢复失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '恢复失败，请重试');
     } finally {
       setStatusBusy(false);
     }
@@ -204,13 +193,13 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   async function handleSell() {
     if (!item || statusBusy) return;
     if (sellDate > getTodayString()) {
-      Alert.alert('提示', '售出日期不能晚于今天');
+      alertError('提示', '售出日期不能晚于今天');
       return;
     }
 
     const priceNum = parseFloat(sellPrice);
     if (Number.isNaN(priceNum) || priceNum < 0) {
-      Alert.alert('提示', '请输入有效的卖出价（≥ 0）');
+      alertError('提示', '请输入有效的卖出价（≥ 0）');
       return;
     }
 
@@ -221,7 +210,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       setSellPrice('');
       await loadItem();
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '售出失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '售出失败，请重试');
     } finally {
       setStatusBusy(false);
     }

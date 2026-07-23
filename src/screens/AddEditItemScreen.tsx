@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -30,6 +29,7 @@ import {
   pickEntityImageFromLibraryAsync,
   resolveEntityImageForSaveAsync,
 } from '../utils/entityImages';
+import { alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditItem'>;
 
@@ -91,7 +91,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
     try {
       await loadItem(id);
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '加载失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '加载失败，请重试');
     }
   }, [db]);
 
@@ -161,7 +161,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
         setImageUri(selectedUri);
       }
     } catch (error) {
-      Alert.alert('图片上传失败', error instanceof Error ? error.message : '请选择图片后重试');
+      alertError('图片上传失败', error instanceof Error ? error.message : '请选择图片后重试');
     }
   }
 
@@ -176,13 +176,13 @@ export function AddEditItemScreen({ route, navigation }: Props) {
 
   async function handleSave() {
     if (!name.trim()) {
-      Alert.alert('提示', '请输入物品名称');
+      alertError('提示', '请输入物品名称');
       return;
     }
 
     const totalPriceNum = parseFloat(totalPrice);
     if (Number.isNaN(totalPriceNum) || totalPriceNum <= 0) {
-      Alert.alert('提示', '请输入有效的总金额');
+      alertError('提示', '请输入有效的总金额');
       return;
     }
 
@@ -193,13 +193,13 @@ export function AddEditItemScreen({ route, navigation }: Props) {
     if (isInstallment) {
       const nextMonths = parseInt(installmentMonths, 10);
       if (Number.isNaN(nextMonths) || nextMonths <= 0) {
-        Alert.alert('提示', '请输入有效的分期月数');
+        alertError('提示', '请输入有效的分期月数');
         return;
       }
 
       const nextMonthlyPayment = parseFloat(monthlyPayment);
       if (Number.isNaN(nextMonthlyPayment) || nextMonthlyPayment <= 0) {
-        Alert.alert('提示', '请输入有效的月供金额');
+        alertError('提示', '请输入有效的月供金额');
         return;
       }
 
@@ -208,7 +208,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
       downPaymentNum = downPayment ? parseFloat(downPayment) || 0 : 0;
 
       if (downPaymentNum >= totalPriceNum) {
-        Alert.alert('提示', '首付已经大于等于总价，建议直接关闭分期开关');
+        alertError('提示', '首付已经大于等于总价，建议直接关闭分期开关');
         return;
       }
     }
@@ -246,7 +246,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
       setOriginalImageUri(savedImageUri);
       navigation.goBack();
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '保存失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '保存失败，请重试');
     } finally {
       setLoading(false);
     }

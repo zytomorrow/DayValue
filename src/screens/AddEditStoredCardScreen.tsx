@@ -6,7 +6,6 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -41,6 +40,7 @@ import {
   pickEntityImageFromLibraryAsync,
   resolveEntityImageForSaveAsync,
 } from '../utils/entityImages';
+import { alertConfirm, alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditStoredCard'>;
 
@@ -74,7 +74,7 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
     try {
       await loadCard(id);
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '加载失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '加载失败，请重试');
     }
   }, [db]);
 
@@ -144,7 +144,7 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
         setImageUri(selectedUri);
       }
     } catch (error) {
-      Alert.alert('图片上传失败', error instanceof Error ? error.message : '请选择图片后重试');
+      alertError('图片上传失败', error instanceof Error ? error.message : '请选择图片后重试');
     }
   }
 
@@ -155,42 +155,42 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
 
   async function handleSave() {
     if (!name.trim()) {
-      Alert.alert('提示', '请输入卡包名称');
+      alertError('提示', '请输入卡包名称');
       return;
     }
 
     const paid = parseNumber(actualPaid);
     if (paid === null || paid <= 0) {
-      Alert.alert('提示', '请输入有效的实际支付金额');
+      alertError('提示', '请输入有效的实际支付金额');
       return;
     }
 
     const isCountCard = cardType === 'count';
     const face = parseNumber(faceValue, !isCountCard);
     if (face === null || face <= 0) {
-      Alert.alert('提示', isCountCard ? '请输入有效的总次数' : '请输入有效的总面值');
+      alertError('提示', isCountCard ? '请输入有效的总次数' : '请输入有效的总面值');
       return;
     }
 
     const balance = parseNumber(currentBalance, !isCountCard);
     if (balance === null || balance < 0) {
-      Alert.alert('提示', isCountCard ? '请输入有效的剩余次数' : '请输入有效的当前余额');
+      alertError('提示', isCountCard ? '请输入有效的剩余次数' : '请输入有效的当前余额');
       return;
     }
 
     if (balance > face) {
-      Alert.alert('提示', isCountCard ? '剩余次数不能超过总次数' : '当前余额不能超过总面值');
+      alertError('提示', isCountCard ? '剩余次数不能超过总次数' : '当前余额不能超过总面值');
       return;
     }
 
     if (!isCountCard && face < paid) {
-      Alert.alert('不太对劲', `你实付了 ¥${paid}，但总面值只填了 ¥${face}，请确认是否填反了。`);
+      alertError('不太对劲', `你实付了 ¥${paid}，但总面值只填了 ¥${face}，请确认是否填反了。`);
       return;
     }
 
     const reminder = parseNumber(reminderDays, false);
     if (reminder === null || reminder < 0) {
-      Alert.alert('提示', '提醒天数需要是大于等于 0 的整数');
+      alertError('提示', '提醒天数需要是大于等于 0 的整数');
       return;
     }
 
@@ -225,7 +225,7 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
       setOriginalImageUri(savedImageUri);
       navigation.goBack();
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '保存失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '保存失败，请重试');
     } finally {
       setLoading(false);
     }
@@ -234,22 +234,15 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
   async function handleDelete() {
     if (!isEditing || editId === undefined) return;
 
-    Alert.alert('确认删除', '删除后无法恢复，确定要删除这张卡吗？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteEntityImageAsync(originalImageUri);
-            await deleteStoredCard(db, editId);
-            navigation.goBack();
-          } catch (error) {
-            Alert.alert('错误', error instanceof Error ? error.message : '删除失败，请重试');
-          }
-        },
-      },
-    ]);
+    alertConfirm('确认删除', '删除后无法恢复，确定要删除这张卡吗？', async () => {
+      try {
+        await deleteEntityImageAsync(originalImageUri);
+        await deleteStoredCard(db, editId);
+        navigation.goBack();
+      } catch (error) {
+        alertError('错误', error instanceof Error ? error.message : '删除失败，请重试');
+      }
+    }, { confirmText: '删除', destructive: true });
   }
 
   async function handleToggleArchive() {
@@ -259,7 +252,7 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
       await updateStoredCard(db, editId, { status: nextStatus });
       setStatus(nextStatus);
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '操作失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '操作失败，请重试');
     }
   }
 

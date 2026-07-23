@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   FlatList,
   Modal,
   StyleSheet,
@@ -16,6 +15,7 @@ import { useCategories } from '../contexts/CategoriesContext';
 import { THEME } from '../utils/constants';
 import { DEFAULT_ICON, findIconOption } from '../utils/iconLibrary';
 import { BrutalButton, IconPicker, PixelInput } from '../components';
+import { alertConfirm, alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Categories'>;
 
@@ -68,7 +68,7 @@ export function CategoriesScreen({}: Props) {
   async function handleCreate() {
     const name = newName.trim();
     if (!name) {
-      Alert.alert('提示', '请输入分类名称');
+      alertError('提示', '请输入分类名称');
       return;
     }
     setSaving(true);
@@ -76,7 +76,7 @@ export function CategoriesScreen({}: Props) {
       await createCategory({ name, icon: newIcon, type: activeType });
       resetCreateModal();
     } catch {
-      Alert.alert('错误', '新增分类失败，请重试');
+      alertError('错误', '新增分类失败，请重试');
     } finally {
       setSaving(false);
     }
@@ -92,7 +92,7 @@ export function CategoriesScreen({}: Props) {
     if (!editingCategory) return;
     const name = newName.trim();
     if (!name) {
-      Alert.alert('提示', '请输入分类名称');
+      alertError('提示', '请输入分类名称');
       return;
     }
 
@@ -106,7 +106,7 @@ export function CategoriesScreen({}: Props) {
       });
       resetEditModal();
     } catch {
-      Alert.alert('错误', '更新分类失败，请重试');
+      alertError('错误', '更新分类失败，请重试');
     } finally {
       setSaving(false);
     }
@@ -115,35 +115,28 @@ export function CategoriesScreen({}: Props) {
   async function handleDelete() {
     if (!editingCategory) return;
     if (editingCategory.id === 'other') {
-      Alert.alert('提示', '系统兜底分类不可删除');
+      alertError('提示', '系统兜底分类不可删除');
       return;
     }
     if (!editingCategory.id.startsWith('cat_')) {
-      Alert.alert('提示', '系统默认分类不可删除');
+      alertError('提示', '系统默认分类不可删除');
       return;
     }
 
     const usageCount = await getCategoryUsageCount(activeType, editingCategory.id);
     if (usageCount > 0) {
-      Alert.alert('提示', `该分类仍被 ${usageCount} 条记录使用，请先修改这些记录的分类`);
+      alertError('提示', `该分类仍被 ${usageCount} 条记录使用，请先修改这些记录的分类`);
       return;
     }
 
-    Alert.alert('确认删除', `确定删除“${editingCategory.name}”吗？`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteCategory(activeType, editingCategory.id);
-            resetEditModal();
-          } catch {
-            Alert.alert('错误', '删除分类失败，请重试');
-          }
-        },
-      },
-    ]);
+    alertConfirm('确认删除', `确定删除“${editingCategory.name}”吗？`, async () => {
+      try {
+        await deleteCategory(activeType, editingCategory.id);
+        resetEditModal();
+      } catch {
+        alertError('错误', '删除分类失败，请重试');
+      }
+    }, { confirmText: '删除', destructive: true });
   }
 
   return (

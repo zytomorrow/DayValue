@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -27,6 +26,7 @@ import {
   restoreFromWebDAVAsync,
   type WebDAVConfig,
 } from '../utils/backup';
+import { alertConfirm, alertError, alertSuccess } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Backup'>;
 
@@ -112,7 +112,7 @@ export function BackupScreen({}: Props) {
     try {
       await task();
     } catch (error) {
-      Alert.alert(
+      alertError(
         '操作失败',
         error instanceof Error ? error.message : '未知错误，请重试。',
       );
@@ -128,17 +128,11 @@ export function BackupScreen({}: Props) {
   }
 
   function confirmImport() {
-    Alert.alert(
+    alertConfirm(
       '从文件恢复',
       '恢复将覆盖当前的全部资产、订阅、卡包、分类和图片，且不可撤销。建议先导出当前数据备份。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '继续恢复',
-          style: 'destructive',
-          onPress: () => void withBusy('import', doImport),
-        },
-      ],
+      () => void withBusy('import', doImport),
+      { confirmText: '继续恢复', destructive: true },
     );
   }
 
@@ -146,9 +140,7 @@ export function BackupScreen({}: Props) {
     const restored = await pickAndImportLocalBackupAsync(db);
     if (!restored) return;
     await refreshCategories();
-    Alert.alert('恢复完成', '已从备份文件恢复数据。', [
-      { text: '好的', onPress: () => {} },
-    ]);
+    alertSuccess('恢复完成', '已从备份文件恢复数据。');
   }
 
   async function handleSaveConfig() {
@@ -157,7 +149,7 @@ export function BackupScreen({}: Props) {
         throw new Error('请填写 WebDAV 服务器地址');
       }
       await setWebDAVConfig(db, buildConfigFromForm());
-      Alert.alert('已保存', 'WebDAV 配置已保存。');
+      alertSuccess('已保存', 'WebDAV 配置已保存。');
     });
   }
 
@@ -167,48 +159,37 @@ export function BackupScreen({}: Props) {
         throw new Error('请先填写 WebDAV 服务器地址');
       }
       await testWebDAVConnectionAsync(buildConfigFromForm());
-      Alert.alert('连接成功', 'WebDAV 服务器可访问，远端目录已就绪。');
+      alertSuccess('连接成功', 'WebDAV 服务器可访问，远端目录已就绪。');
     });
   }
 
   function confirmUpload() {
-    Alert.alert(
+    alertConfirm(
       '上传到 WebDAV',
       '将用当前数据生成备份并覆盖远端同名文件。继续？',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '上传',
-          onPress: () => void withBusy('upload', doUpload),
-        },
-      ],
+      () => void withBusy('upload', doUpload),
+      { confirmText: '上传' },
     );
   }
 
   async function doUpload() {
     await uploadBackupToWebDAVAsync(db, buildConfigFromForm());
-    Alert.alert('上传成功', '备份已上传到 WebDAV 服务器。');
+    alertSuccess('上传成功', '备份已上传到 WebDAV 服务器。');
   }
 
   function confirmRestoreFromWebDAV() {
-    Alert.alert(
+    alertConfirm(
       '从 WebDAV 恢复',
       '将从远端下载备份并覆盖当前的全部资产、订阅、卡包、分类和图片，且不可撤销。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '继续恢复',
-          style: 'destructive',
-          onPress: () => void withBusy('restore', doRestoreFromWebDAV),
-        },
-      ],
+      () => void withBusy('restore', doRestoreFromWebDAV),
+      { confirmText: '继续恢复', destructive: true },
     );
   }
 
   async function doRestoreFromWebDAV() {
     await restoreFromWebDAVAsync(db, buildConfigFromForm());
     await refreshCategories();
-    Alert.alert('恢复完成', '已从 WebDAV 备份恢复数据。');
+    alertSuccess('恢复完成', '已从 WebDAV 备份恢复数据。');
   }
 
   return (

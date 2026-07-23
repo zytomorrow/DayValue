@@ -8,7 +8,6 @@ import {
   Text,
   TouchableOpacity,
   Modal,
-  Alert,
   StyleSheet,
   type StyleProp,
   type ViewStyle,
@@ -32,6 +31,7 @@ import { BrutalButton } from './BrutalButton';
 import { PixelInput } from './PixelInput';
 import { CardShell } from './CardShell';
 import { EntityCover } from './EntityCover';
+import { alertError } from '../utils/pixelAlert';
 
 type StoredCardLayout = 'list' | 'grid';
 
@@ -89,11 +89,11 @@ export function StoredCardCard({
   async function handleAmountSave() {
     const value = parseFloat(amountInput);
     if (Number.isNaN(value) || value < 0) {
-      Alert.alert('提示', '请输入有效金额（>= 0）');
+      alertError('提示', '请输入有效金额（>= 0）');
       return;
     }
     if (amountMode === 'deduct' && value <= 0) {
-      Alert.alert('提示', '消费金额必须大于 0');
+      alertError('提示', '消费金额必须大于 0');
       return;
     }
 
@@ -102,12 +102,12 @@ export function StoredCardCard({
       const today = getTodayString();
       if (amountMode === 'deduct') {
         if (value > card.current_balance) {
-          Alert.alert('提示', `消费金额超过余额，将按当前余额扣完（${card.current_balance.toFixed(2)}）`);
+          alertError('提示', `消费金额超过余额，将按当前余额扣完（${card.current_balance.toFixed(2)}）`);
         }
         await deductStoredCardAmount(db, card.id, value, today);
       } else {
         if (value > card.face_value) {
-          Alert.alert('提示', `余额不能超过总面值 ${card.face_value.toFixed(2)}`);
+          alertError('提示', `余额不能超过总面值 ${card.face_value.toFixed(2)}`);
           return;
         }
         await setStoredCardBalance(db, card.id, value, today);
@@ -116,7 +116,7 @@ export function StoredCardCard({
       setAmountInput('');
       onDataChanged();
     } catch {
-      Alert.alert('错误', '更新失败，请重试');
+      alertError('错误', '更新失败，请重试');
     } finally {
       setSaving(false);
     }
@@ -124,14 +124,14 @@ export function StoredCardCard({
 
   async function handlePunchCount() {
     if (card.current_balance <= 0) {
-      Alert.alert('提示', '次数已用完，无法继续打卡');
+      alertError('提示', '次数已用完，无法继续打卡');
       return;
     }
     try {
       await punchStoredCardCountMinusOne(db, card.id, getTodayString());
       onDataChanged();
     } catch {
-      Alert.alert('错误', '打卡失败，请重试');
+      alertError('错误', '打卡失败，请重试');
     }
   }
 

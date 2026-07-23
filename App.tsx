@@ -9,7 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { initDB } from './src/database';
 import { CategoriesProvider } from './src/contexts/CategoriesContext';
-import { CustomSplashScreen } from './src/components';
+import { CustomSplashScreen, PixelAlertRoot } from './src/components';
 import {
   DashboardScreen,
   SettingsScreen,
@@ -134,6 +134,9 @@ export default function App() {
           </CategoriesProvider>
         </SQLiteProvider>
       </React.Suspense>
+
+      {/* 像素风全局弹窗，叠在导航之上。 */}
+      <PixelAlertRoot />
 
       {/* CRT TV Off 过渡动画覆盖层，absoluteFill 叠在导航之上。 */}
       {!splashDone && (

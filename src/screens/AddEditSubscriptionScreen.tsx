@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -29,6 +28,7 @@ import {
   pickEntityImageFromLibraryAsync,
   resolveEntityImageForSaveAsync,
 } from '../utils/entityImages';
+import { alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddEditSubscription'>;
 
@@ -57,7 +57,7 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
     try {
       await loadItem(id);
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '加载失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '加载失败，请重试');
     }
   }, [db]);
 
@@ -123,19 +123,19 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
         setImageUri(selectedUri);
       }
     } catch (error) {
-      Alert.alert('图片上传失败', error instanceof Error ? error.message : '请选择图片后重试');
+      alertError('图片上传失败', error instanceof Error ? error.message : '请选择图片后重试');
     }
   }
 
   async function handleSave() {
     if (!name.trim()) {
-      Alert.alert('提示', '请输入订阅名称');
+      alertError('提示', '请输入订阅名称');
       return;
     }
 
     const priceNum = parseFloat(cyclePrice);
     if (Number.isNaN(priceNum) || priceNum <= 0) {
-      Alert.alert('提示', '请输入有效的周期金额');
+      alertError('提示', '请输入有效的周期金额');
       return;
     }
 
@@ -173,7 +173,7 @@ export function AddEditSubscriptionScreen({ route, navigation }: Props) {
       setOriginalImageUri(savedImageUri);
       navigation.goBack();
     } catch (error) {
-      Alert.alert('错误', error instanceof Error ? error.message : '保存失败，请重试');
+      alertError('错误', error instanceof Error ? error.message : '保存失败，请重试');
     } finally {
       setLoading(false);
     }

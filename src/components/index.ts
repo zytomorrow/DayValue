@@ -26,3 +26,6 @@ export type {
   AssetCategorySheetProps,
 } from './AssetCategorySheet';
 export { DashboardHeroHeader } from './DashboardHeroHeader';
+export { PixelAlert } from './PixelAlert';
+export type { PixelAlertButton, PixelAlertProps } from './PixelAlert';
+export { PixelAlertRoot } from './PixelAlertRoot';

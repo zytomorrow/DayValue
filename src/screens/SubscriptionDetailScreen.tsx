@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -21,6 +20,7 @@ import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
 import { BrutalButton, EntityCover, StatusBadge } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
+import { alertConfirm } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SubscriptionDetail'>;
 
@@ -49,31 +49,18 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
   );
 
   async function handleDelete() {
-    Alert.alert('确认删除', `确定要删除“${sub?.name}”吗？此操作不可撤销。`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteEntityImageAsync(sub?.image_uri);
-          await deleteSubscription(db, subscriptionId);
-          navigation.goBack();
-        },
-      },
-    ]);
+    alertConfirm('确认删除', `确定要删除“${sub?.name}”吗？此操作不可撤销。`, async () => {
+      await deleteEntityImageAsync(sub?.image_uri);
+      await deleteSubscription(db, subscriptionId);
+      navigation.goBack();
+    }, { confirmText: '删除', destructive: true });
   }
 
   async function handleArchive() {
-    Alert.alert('退订确认', '确认退订后将从「每日消耗」中移除。', [
-      { text: '返回', style: 'cancel' },
-      {
-        text: '确认退订',
-        onPress: async () => {
-          await archiveSubscription(db, subscriptionId);
-          await loadData();
-        },
-      },
-    ]);
+    alertConfirm('退订确认', '确认退订后将从「每日消耗」中移除。', async () => {
+      await archiveSubscription(db, subscriptionId);
+      await loadData();
+    }, { confirmText: '确认退订', cancelText: '返回' });
   }
 
   if (!sub) {
