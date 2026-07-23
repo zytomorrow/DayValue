@@ -1,0 +1,98 @@
+name: Android Build
+
+# 触发条件：
+# - 手动触发（可选择构建类型与 CPU 架构）
+# - push 到 main 分支时自动构建 release arm64-v8a APK
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 构建类型
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+      architecture:
+        description: CPU 架构
+        required: true
+        default: arm64-v8a
+        type: choice
+        options:
+          - arm64-v8a
+          - universal
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'assets/**'
+      - 'scripts/**'
+      - 'app.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android-build.yml'
+
+jobs:
+  build:
+    name: 构建 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 设置 Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          # 预装 Expo SDK 55 / RN 0.83 所需的 SDK 组件，避免 Gradle 运行时下载失败
+          packages: |
+            platforms;android-36
+            platforms;android-35
+            build-tools;36.0.0
+            build-tools;35.0.0
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 计算 构建参数
+        id: args
+        run: |
+          ARGS="--clean-prebuild"
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'release' }}"
+          ARCH="${{ github.event.inputs.architecture || 'arm64-v8a' }}"
+          if [ "$BUILD_TYPE" = "debug" ]; then ARGS="$ARGS --debug"; fi
+          if [ "$ARCH" = "universal" ]; then ARGS="$ARGS --universal"; fi
+          echo "build_type=$BUILD_TYPE" >> "$GITHUB_OUTPUT"
+          echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+          echo "构建参数: $ARGS"
+
+      - name: 构建 APK
+        env:
+          # local-android-build.js 读取 ANDROID_HOME 或 ANDROID_SDK_ROOT
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: node scripts/local-android-build.js ${{ steps.args.outputs.args }}
+
+      - name: 上传 APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: DayValue-${{ steps.args.outputs.build_type }}-${{ steps.args.outputs.arch }}
+          path: DayValue-v*.apk
+          if-no-files-found: error
+          retention-days: 30
