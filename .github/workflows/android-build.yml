@@ -58,14 +58,11 @@ jobs:
           java-version: '17'
 
       - name: 设置 Android SDK
+        # ubuntu-latest 已预装 Android SDK（含近期 platforms/build-tools），
+        # 此处仅用于接受 SDK 许可协议，Gradle 缺失组件时会自动下载。
         uses: android-actions/setup-android@v3
         with:
-          # 预装 Expo SDK 55 / RN 0.83 所需的 SDK 组件，避免 Gradle 运行时下载失败
-          packages: |
-            platforms;android-36
-            platforms;android-35
-            build-tools;36.0.0
-            build-tools;35.0.0
+          accept-android-sdk-licenses: true
 
       - name: 安装依赖
         run: npm ci
@@ -85,9 +82,10 @@ jobs:
 
       - name: 构建 APK
         env:
-          # local-android-build.js 读取 ANDROID_HOME 或 ANDROID_SDK_ROOT
-          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          # local-android-build.js 读取 ANDROID_HOME 或 ANDROID_SDK_ROOT；
+          # ubuntu-latest 默认 ANDROID_HOME=/usr/local/lib/android/sdk
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
         run: node scripts/local-android-build.js ${{ steps.args.outputs.args }}
 
       - name: 上传 APK 产物
