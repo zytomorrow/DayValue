@@ -330,6 +330,7 @@ export function SettingsScreen({ navigation }: Props) {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <BrutalCard title="常规设置" titleColor={THEME.colors.primary}>
           <SettingRow title="分类管理" onPress={() => navigation.navigate('Categories')} />
+          <SettingRow title="备份与恢复" onPress={() => navigation.navigate('Backup')} />
           <SettingRow title="语言设置" value="简体中文" showChevron={false} />
           <SettingRow title="当前版本" value={currentVersion} showChevron={false} last />
         </BrutalCard>
