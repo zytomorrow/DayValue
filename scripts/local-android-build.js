@@ -235,7 +235,11 @@ async function main() {
   }
 
   ensureExists(gradleWrapper, `未找到 Gradle Wrapper：${gradleWrapper}`);
-  await ensureLocalGradleDistribution(repoRoot, androidDir, 120000);
+  // CI 环境（如 GitHub Actions）网络稳定，直接由 Gradle Wrapper 自行下载分发包即可；
+  // 本地分发改写 file:// URL 在 Linux 绝对路径下会拼出四个斜杠，导致 UnknownHostException。
+  if (!process.env.CI) {
+    await ensureLocalGradleDistribution(repoRoot, androidDir, 120000);
+  }
 
   const gradleTask = args.debug ? "assembleDebug" : "assembleRelease";
   const gradleArgs = [gradleTask];
