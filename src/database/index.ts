@@ -1,4 +1,4 @@
-export { initDB } from './init';
+export { initDB, SCHEMA_VERSION } from './init';
 export { seedSampleData } from './seed';
 export * from './categories';
 export * from './oneTimeItems';

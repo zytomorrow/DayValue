@@ -125,6 +125,7 @@ export interface Category extends CategoryInfo {
 export type RootStackParamList = {
   Dashboard: undefined;
   Settings: undefined;
+  Backup: undefined;
   AddEditItem: { itemId?: number; defaultIsInstallment?: boolean } | undefined;
   AddEditSubscription: { subscriptionId?: number } | undefined;
   AddEditStoredCard:

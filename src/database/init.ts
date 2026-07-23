@@ -7,6 +7,9 @@ interface TableColumnInfo {
   name: string;
 }
 
+/** 当前数据库结构版本号，备份/恢复时会用来校验兼容性。 */
+export const SCHEMA_VERSION = 8;
+
 async function getTableColumnNames(
   db: SQLiteDatabase,
   tableName: string,
@@ -113,8 +116,6 @@ async function rebuildOneTimeItemsTable(current: SQLiteDatabase): Promise<void> 
  * 用于 SQLiteProvider.onInit。
  */
 export async function initDB(db: SQLiteDatabase): Promise<void> {
-  const SCHEMA_VERSION = 8;
-
   async function migrate(current: SQLiteDatabase) {
     const versionRow = await current.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
     const userVersion = versionRow?.user_version ?? 0;

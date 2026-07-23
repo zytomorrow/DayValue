@@ -2,7 +2,7 @@
   "expo": {
     "name": "DayValue",
     "slug": "DayValue",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,10 @@
     },
     "android": {
       "package": "com.ther777.dayvalue",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/icon.png"
@@ -26,6 +29,8 @@
       "@react-native-community/datetimepicker",
       "expo-font",
       "expo-splash-screen",
+      "expo-document-picker",
+      "expo-sharing",
       [
         "expo-image-picker",
         {

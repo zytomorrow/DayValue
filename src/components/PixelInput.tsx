@@ -17,6 +17,9 @@ interface PixelInputProps {
   keyboardType?: KeyboardTypeOptions;
   multiline?: boolean;
   editable?: boolean;
+  secureTextEntry?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoCorrect?: boolean;
   style?: ViewStyle;
 }
 
@@ -28,6 +31,9 @@ export function PixelInput({
   keyboardType = 'default',
   multiline = false,
   editable = true,
+  secureTextEntry = false,
+  autoCapitalize = 'sentences',
+  autoCorrect = true,
   style,
 }: PixelInputProps) {
   return (
@@ -41,6 +47,9 @@ export function PixelInput({
         keyboardType={keyboardType}
         multiline={multiline}
         editable={editable}
+        secureTextEntry={secureTextEntry}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
         style={[
           styles.input,
           multiline && styles.multiline,

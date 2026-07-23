@@ -13,6 +13,7 @@ import { CustomSplashScreen } from './src/components';
 import {
   DashboardScreen,
   SettingsScreen,
+  BackupScreen,
   AddEditItemScreen,
   AddEditSubscriptionScreen,
   AddEditStoredCardScreen,
@@ -86,6 +87,11 @@ export default function App() {
                     name="Settings"
                     component={SettingsScreen}
                     options={{ title: '设置' }}
+                  />
+                  <Stack.Screen
+                    name="Backup"
+                    component={BackupScreen}
+                    options={{ title: '备份与恢复' }}
                   />
                   <Stack.Screen
                     name="AddEditItem"
