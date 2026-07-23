@@ -24,7 +24,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
 const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/ther7777/DayValue/releases/latest';
 const GITHUB_RELEASES_PAGE_URL = 'https://github.com/ther7777/DayValue/releases';
-const CONTACT_EMAIL = '1792480506@qq.com';
 const APP_NAME = 'DayValue';
 
 type GitHubReleaseResponse = {
@@ -144,16 +143,6 @@ export function SettingsScreen({ navigation }: Props) {
       await Linking.openURL(url);
     } catch {
       alertError(failureTitle, `${failureMessage}\n\n${url}`);
-    }
-  }
-
-  async function openContactMail() {
-    const subject = encodeURIComponent(`[联系] ${APP_NAME}`);
-    const body = encodeURIComponent(`版本：${currentVersion}\n`);
-    try {
-      await Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`);
-    } catch {
-      alertError('无法打开邮件客户端', `邮箱：${CONTACT_EMAIL}`);
     }
   }
 
@@ -308,13 +297,7 @@ export function SettingsScreen({ navigation }: Props) {
 
         <BrutalCard title="关于" titleColor={THEME.colors.warning}>
           <SettingRow title="应用名称" value={APP_NAME} showChevron={false} />
-          <SettingRow title="当前版本" value={currentVersion} showChevron={false} />
-          <SettingRow
-            title="联系邮箱"
-            value={CONTACT_EMAIL}
-            onPress={() => void openContactMail()}
-            last
-          />
+          <SettingRow title="当前版本" value={currentVersion} showChevron={false} last />
         </BrutalCard>
 
         <BrutalCard title="危险区" titleColor={THEME.colors.dangerDark}>
