@@ -20,6 +20,7 @@ export type { AppBottomSheetProps } from './AppBottomSheet';
 export { AssetFilterChip } from './AssetFilterChip';
 export type { AssetFilterChipProps } from './AssetFilterChip';
 export { AssetSectionToolbar } from './AssetSectionToolbar';
+export { AssetGroupedList } from './AssetGroupedList';
 export { AssetCategorySheet } from './AssetCategorySheet';
 export type {
   AssetCategorySheetItem,

@@ -41,6 +41,7 @@ import {
   AppBottomSheet,
   AssetCategorySheet,
   AssetSectionToolbar,
+  AssetGroupedList,
   DashboardHeroHeader,
 } from '../components';
 
@@ -81,6 +82,7 @@ type SectionToolbarProps = {
 const ASSET_SORT_FIELD_KEY = 'asset_sort_field';
 const ASSET_SORT_DIRECTION_KEY = 'asset_sort_direction';
 const ASSET_LAYOUT_MODE_KEY = 'asset_layout_mode';
+const ASSET_GROUPED_KEY = 'asset_grouped';
 const DEBT_SORT_FIELD_KEY = 'debt_sort_field';
 const DEBT_SORT_DIRECTION_KEY = 'debt_sort_direction';
 const DEBT_LAYOUT_MODE_KEY = 'debt_layout_mode';
@@ -266,6 +268,7 @@ export function DashboardScreen({ navigation }: Props) {
   const [itemSortField, setItemSortField] = useState<ItemSortField>('buy_date');
   const [itemSortDirection, setItemSortDirection] = useState<SortDirection>('desc');
   const [assetLayoutMode, setAssetLayoutMode] = useState<LayoutMode>('list');
+  const [assetGrouped, setAssetGrouped] = useState(false);
 
   const [debtSortField, setDebtSortField] = useState<DebtSortField>('daily_cost');
   const [debtSortDirection, setDebtSortDirection] = useState<SortDirection>('desc');
@@ -296,6 +299,7 @@ export function DashboardScreen({ navigation }: Props) {
         assetFieldValue,
         assetDirectionValue,
         assetLayoutValue,
+        assetGroupedValue,
         debtFieldValue,
         debtDirectionValue,
         debtLayoutValue,
@@ -306,6 +310,7 @@ export function DashboardScreen({ navigation }: Props) {
         getPreference(db, ASSET_SORT_FIELD_KEY),
         getPreference(db, ASSET_SORT_DIRECTION_KEY),
         getPreference(db, ASSET_LAYOUT_MODE_KEY),
+        getPreference(db, ASSET_GROUPED_KEY),
         getPreference(db, DEBT_SORT_FIELD_KEY),
         getPreference(db, DEBT_SORT_DIRECTION_KEY),
         getPreference(db, DEBT_LAYOUT_MODE_KEY),
@@ -323,6 +328,7 @@ export function DashboardScreen({ navigation }: Props) {
       if (assetLayoutValue === 'list' || assetLayoutValue === 'grid') {
         setAssetLayoutMode(assetLayoutValue);
       }
+      setAssetGrouped(assetGroupedValue === '1');
 
       if (debtFieldValue === 'daily_cost' || debtFieldValue === 'date') {
         setDebtSortField(debtFieldValue);
@@ -389,6 +395,11 @@ export function DashboardScreen({ navigation }: Props) {
     persistPreference(ASSET_LAYOUT_MODE_KEY, nextMode);
   }, [persistPreference]);
 
+  const updateAssetGrouped = useCallback((nextGrouped: boolean) => {
+    setAssetGrouped(nextGrouped);
+    persistPreference(ASSET_GROUPED_KEY, nextGrouped ? '1' : '0');
+  }, [persistPreference]);
+
   const updateDebtSortField = useCallback((nextField: DebtSortField) => {
     setDebtSortField(nextField);
     persistPreference(DEBT_SORT_FIELD_KEY, nextField);
@@ -422,6 +433,10 @@ export function DashboardScreen({ navigation }: Props) {
   const toggleAssetLayoutMode = useCallback(() => {
     updateAssetLayoutMode(assetLayoutMode === 'list' ? 'grid' : 'list');
   }, [assetLayoutMode, updateAssetLayoutMode]);
+
+  const toggleAssetGrouped = useCallback(() => {
+    updateAssetGrouped(!assetGrouped);
+  }, [assetGrouped, updateAssetGrouped]);
 
   const toggleDebtLayoutMode = useCallback(() => {
     updateDebtLayoutMode(debtLayoutMode === 'list' ? 'grid' : 'list');
@@ -790,8 +805,10 @@ export function DashboardScreen({ navigation }: Props) {
           title="在用资产"
           sortSummary={assetSortSummary}
           layoutMode={assetLayoutMode}
+          grouped={assetGrouped}
           onPressSort={() => setSortSheetTarget('assets')}
           onToggleLayout={toggleAssetLayoutMode}
+          onToggleGrouped={toggleAssetGrouped}
         />
 
         {showHistoryFirst && (
@@ -806,7 +823,17 @@ export function DashboardScreen({ navigation }: Props) {
           </TouchableOpacity>
         )}
 
-        {hasActiveAssets && renderAssetList(filteredActiveItems)}
+        {hasActiveAssets &&
+          (assetGrouped ? (
+            <AssetGroupedList
+              items={filteredActiveItems}
+              categories={itemCategories}
+              layoutMode={assetLayoutMode}
+              onPressItem={itemId => navigation.navigate('ItemDetail', { itemId })}
+            />
+          ) : (
+            renderAssetList(filteredActiveItems)
+          ))}
 
         {!hasActiveAssets && !hasArchivedAssets && (
           <EmptyState message={emptyMessage} icon="🧾" />

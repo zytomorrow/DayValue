@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   Linking,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,8 +24,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
 const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/ther7777/DayValue/releases/latest';
 const GITHUB_RELEASES_PAGE_URL = 'https://github.com/ther7777/DayValue/releases';
-const GITHUB_ISSUES_NEW_URL = 'https://github.com/ther7777/DayValue/issues/new';
-const FEEDBACK_EMAIL = '1792480506@qq.com';
+const CONTACT_EMAIL = '1792480506@qq.com';
+const APP_NAME = 'DayValue';
 
 type GitHubReleaseResponse = {
   tag_name?: string;
@@ -69,14 +68,6 @@ function pickApkDownloadUrl(release: GitHubReleaseResponse): string | null {
     return typeof url === 'string' && url.toLowerCase().endsWith('.apk');
   });
   return typeof apk?.browser_download_url === 'string' ? apk.browser_download_url : null;
-}
-
-function buildMailtoUrl(subject: string, body: string): string {
-  return `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
-function buildIssueUrl(title: string, body: string): string {
-  return `${GITHUB_ISSUES_NEW_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
 
 function BrutalCard({
@@ -138,25 +129,11 @@ export function SettingsScreen({ navigation }: Props) {
   const { refreshCategories } = useCategories();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
 
   const currentVersion = useMemo(() => {
     const version = Constants.expoConfig?.version;
     return typeof version === 'string' && version.trim() ? version.trim() : '0.0.0';
   }, []);
-
-  const bugMailBody = useMemo(
-    () => `版本：${currentVersion}\n触发场景：`,
-    [currentVersion],
-  );
-  const suggestionMailBody = useMemo(
-    () => `版本：${currentVersion}\n建议：`,
-    [currentVersion],
-  );
-  const issueBody = useMemo(
-    () => `版本：${currentVersion}\n描述：`,
-    [currentVersion],
-  );
 
   async function openExternalUrl(
     url: string,
@@ -170,28 +147,14 @@ export function SettingsScreen({ navigation }: Props) {
     }
   }
 
-  async function openFeedbackMail(kind: 'bug' | 'suggestion') {
-    const subject = kind === 'bug' ? '[Bug] DayValue' : '[优化建议] DayValue';
-    const body = kind === 'bug' ? bugMailBody : suggestionMailBody;
-    const url = buildMailtoUrl(subject, body);
-
+  async function openContactMail() {
+    const subject = encodeURIComponent(`[联系] ${APP_NAME}`);
+    const body = encodeURIComponent(`版本：${currentVersion}\n`);
     try {
-      await Linking.openURL(url);
+      await Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`);
     } catch {
-      alertError(
-        '无法打开邮件客户端',
-        `邮箱：${FEEDBACK_EMAIL}\n\n标题：${subject}\n\n${body}`,
-      );
+      alertError('无法打开邮件客户端', `邮箱：${CONTACT_EMAIL}`);
     }
-  }
-
-  async function openGitHubIssue() {
-    const url = buildIssueUrl('[反馈] ', issueBody);
-    await openExternalUrl(
-      url,
-      '无法打开 GitHub Issue',
-      `请手动打开 GitHub Issue 页面：\n${GITHUB_ISSUES_NEW_URL}`,
-    );
   }
 
   async function handleCheckUpdate() {
@@ -343,11 +306,15 @@ export function SettingsScreen({ navigation }: Props) {
           </Text>
         </BrutalCard>
 
-        <BrutalCard title="反馈与支持" titleColor={THEME.colors.warning}>
-          <SettingRow title="BUG / 建议反馈" onPress={() => setFeedbackModalVisible(true)} />
-          <Text style={styles.feedbackHint}>
-            遇到问题或有想法，都可以发邮件或去 GitHub Issue 反馈。
-          </Text>
+        <BrutalCard title="关于" titleColor={THEME.colors.warning}>
+          <SettingRow title="应用名称" value={APP_NAME} showChevron={false} />
+          <SettingRow title="当前版本" value={currentVersion} showChevron={false} />
+          <SettingRow
+            title="联系邮箱"
+            value={CONTACT_EMAIL}
+            onPress={() => void openContactMail()}
+            last
+          />
         </BrutalCard>
 
         <BrutalCard title="危险区" titleColor={THEME.colors.dangerDark}>
@@ -364,73 +331,6 @@ export function SettingsScreen({ navigation }: Props) {
           />
         </BrutalCard>
       </ScrollView>
-
-      <Modal visible={feedbackModalVisible} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.overlay}
-          onPress={() => setFeedbackModalVisible(false)}
-          activeOpacity={1}
-        >
-          <TouchableOpacity
-            style={styles.modal}
-            onPress={() => {}}
-            activeOpacity={1}
-          >
-            <Text style={styles.modalTitle}>反馈与支持</Text>
-            <Text style={styles.modalDesc}>
-              感谢你愿意告诉我问题和想法，这会直接帮助 DayValue 继续优化。
-            </Text>
-
-            <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>邮箱</Text>
-              <Text style={styles.infoValue}>{FEEDBACK_EMAIL}</Text>
-            </View>
-
-            <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>Bug 最低格式</Text>
-              <Text style={styles.infoValue}>触发场景：</Text>
-            </View>
-
-            <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>建议最低格式</Text>
-              <Text style={styles.infoValue}>建议：</Text>
-            </View>
-
-            <Text style={styles.modalHint}>也可以直接打开 GitHub Issue 页面反馈。</Text>
-
-            <View style={styles.modalActions}>
-              <BrutalButton
-                title="发 Bug 邮件"
-                onPress={() => void openFeedbackMail('bug')}
-                variant="danger"
-                size="md"
-                style={styles.modalBtn}
-              />
-              <BrutalButton
-                title="发优化建议邮件"
-                onPress={() => void openFeedbackMail('suggestion')}
-                variant="accent"
-                size="md"
-                style={styles.modalBtn}
-              />
-              <BrutalButton
-                title="打开 GitHub Issue"
-                onPress={() => void openGitHubIssue()}
-                variant="primary"
-                size="md"
-                style={styles.modalBtn}
-              />
-              <BrutalButton
-                title="关闭"
-                onPress={() => setFeedbackModalVisible(false)}
-                variant="outline"
-                size="md"
-                style={styles.modalBtn}
-              />
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -527,71 +427,9 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
     lineHeight: 18,
   },
-  feedbackHint: {
-    fontSize: THEME.fontSize.sm,
-    color: THEME.colors.textSecondary,
-    lineHeight: 18,
-    marginTop: -2,
-  },
   dangerHint: {
     fontSize: THEME.fontSize.sm,
     color: THEME.colors.textSecondary,
     lineHeight: 18,
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modal: {
-    width: '88%',
-    backgroundColor: THEME.colors.surface,
-    ...THEME.pixelBorder,
-    ...THEME.pixelShadow,
-    padding: THEME.spacing.xl,
-  },
-  modalTitle: {
-    fontSize: THEME.fontSize.lg,
-    fontWeight: '700',
-    color: THEME.colors.textPrimary,
-    marginBottom: THEME.spacing.xs,
-  },
-  modalDesc: {
-    fontSize: THEME.fontSize.sm,
-    color: THEME.colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: THEME.spacing.md,
-  },
-  infoBlock: {
-    backgroundColor: THEME.colors.background,
-    borderWidth: 1.5,
-    borderColor: THEME.colors.border,
-    borderRadius: THEME.borderRadius,
-    paddingHorizontal: THEME.spacing.md,
-    paddingVertical: THEME.spacing.sm,
-    gap: 4,
-  },
-  infoLabel: {
-    fontSize: THEME.fontSize.xs,
-    color: THEME.colors.textSecondary,
-    fontWeight: '700',
-  },
-  infoValue: {
-    fontSize: THEME.fontSize.sm,
-    color: THEME.colors.textPrimary,
-    fontWeight: '700',
-  },
-  modalHint: {
-    fontSize: THEME.fontSize.sm,
-    color: THEME.colors.textSecondary,
-    lineHeight: 18,
-  },
-  modalActions: {
-    gap: THEME.spacing.sm,
-    marginTop: THEME.spacing.sm,
-  },
-  modalBtn: {
-    width: '100%',
   },
 });
