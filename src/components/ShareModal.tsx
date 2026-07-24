@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import ViewShot, { type ViewShotRef } from 'react-native-view-shot';
+import ViewShot from 'react-native-view-shot';
 import { THEME } from '../utils/constants';
 import { useTheme } from '../contexts/ThemeContext';
 import { BrutalButton } from './BrutalButton';
@@ -28,8 +28,14 @@ interface ShareModalProps {
 
 type Action = 'share' | 'save';
 
+/**
+ * react-native-view-shot@4.x 的 ViewShot 组件实例类型。
+ * v4 不再导出 ViewShotRef，这里用 InstanceType 推导组件实例。
+ */
+type ViewShotInstance = InstanceType<typeof ViewShot>;
+
 export function ShareModal({ visible, data, onClose }: ShareModalProps) {
-  const shotRef = useRef<ViewShotRef>(null);
+  const shotRef = useRef<ViewShotInstance>(null);
   const scrollRef = useRef<ScrollView>(null);
   const [busy, setBusy] = useState<Action | null>(null);
   const { themeId } = useTheme();

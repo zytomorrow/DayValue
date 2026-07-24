@@ -1,12 +1,19 @@
 /**
  * share.ts - 截图分享与保存工具
  * 把 React 视图渲染成图片，支持调起系统分享或保存至相册。
+ *
+ * 注意：react-native-view-shot@4.x 不再导出 ViewShotRef 类型，
+ * 截图组件的实例类型由默认导出 ViewShot 推导。这里用一个只携带
+ * capture() 方法的最小接口作为 ref 形状，避免引入 v5 才有的类型。
  */
-import type { ViewShotRef } from 'react-native-view-shot';
+import type ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { RefObject } from 'react';
+
+/** ViewShot 实例的最小可用形状：仅需 capture() 方法。 */
+type ViewShotInstance = InstanceType<typeof ViewShot>;
 
 const SHARE_DIR = `${FileSystem.cacheDirectory}share/`;
 
@@ -19,7 +26,7 @@ async function ensureShareDir(): Promise<string> {
 }
 
 async function captureToTempFile(
-  viewRef: RefObject<ViewShotRef | null>,
+  viewRef: RefObject<ViewShotInstance | null>,
 ): Promise<string> {
   if (!viewRef.current) {
     throw new Error('无法获取分享内容，请稍后重试。');
@@ -27,7 +34,12 @@ async function captureToTempFile(
 
   let uri: string;
   try {
-    uri = await viewRef.current.capture();
+    // v4 类型定义中 capture 为可选方法，运行时必然存在，这里显式判空以满足 TS。
+    const capture = viewRef.current.capture;
+    if (!capture) {
+      throw new Error('截图组件未就绪');
+    }
+    uri = await capture.call(viewRef.current);
   } catch (error) {
     throw new Error(
       `截图失败：${error instanceof Error ? error.message : String(error)}`,
@@ -48,7 +60,7 @@ async function captureToTempFile(
  * 截取指定视图并调起系统分享。
  */
 export async function captureAndShareView(
-  viewRef: RefObject<ViewShotRef | null>,
+  viewRef: RefObject<ViewShotInstance | null>,
 ): Promise<boolean> {
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error('当前设备不支持系统分享。');
@@ -70,7 +82,7 @@ export async function captureAndShareView(
  * 会先请求相册写入权限，Android 上自动落入 DayValue 相册。
  */
 export async function captureAndSaveToGallery(
-  viewRef: RefObject<ViewShotRef | null>,
+  viewRef: RefObject<ViewShotInstance | null>,
 ): Promise<string> {
   const targetUri = await captureToTempFile(viewRef);
 

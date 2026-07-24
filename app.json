@@ -55,7 +55,8 @@
           "savePhotosPermission": "允许 DayValue 保存分享卡片到你的相册。",
           "isAccessMediaLocationEnabled": false
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {

@@ -20,7 +20,7 @@ export const SUPPORTED_LANGUAGES: { id: AppLanguage; name: string; nativeName: s
  */
 function detectInitialLanguage(): AppLanguage {
   try {
-    const localeIdentifier: string | undefined = I18nManager.getConstants().localeIdentifier;
+    const localeIdentifier = I18nManager.getConstants().localeIdentifier;
     if (!localeIdentifier) return 'zh-CN';
     const lang = localeIdentifier.toLowerCase();
     return lang.startsWith('en') ? 'en-US' : 'zh-CN';
