@@ -253,7 +253,7 @@ function renderGridRows<T>(
 export function DashboardScreen({ navigation }: Props) {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
-  const { itemCategories } = useCategories();
+  const { itemCategories, getCategoryInfo } = useCategories();
 
   const [activeTab, setActiveTab] = useState<TabKey>('assets');
   const [items, setItems] = useState<OneTimeItem[]>([]);
@@ -624,24 +624,74 @@ export function DashboardScreen({ navigation }: Props) {
   }, [filteredActiveItems.length, filteredRealizedProfit, selectedAssetCategory]);
 
   const summaryShareData = useMemo<ShareCardData>(
-    () => ({
-      kind: 'summary',
-      assetDailyCost: filteredTotalAssetDailyCost,
-      assetCount: filteredActiveItems.length,
-      realizedProfit: filteredRealizedProfit,
-      subscriptionDailyCost: totalSubscriptionCost,
-      installmentDailyDebt: totalInstallmentDebt,
-      storedPrincipal: totalPrincipal,
-      storedCardCount: activeStoredCards.length,
-    }),
+    () => {
+      const topAssets = [...filteredActiveItems]
+        .map(item => {
+          const activeDays = calculateOneTimeItemActiveDays(item);
+          const cost = calculateDailyCost(item.total_price, 0, activeDays);
+          const cat = getCategoryInfo('item', item.category ?? 'other');
+          return {
+            name: item.name,
+            icon: item.icon ?? cat.icon,
+            dailyCost: Number.isFinite(cost) ? cost : 0,
+            extra: `${activeDays} 天`,
+          };
+        })
+        .sort((a, b) => b.dailyCost - a.dailyCost);
+
+      const topSubscriptions = sortedActiveSubscriptions.map(sub => {
+        const cat = getCategoryInfo('subscription', sub.category ?? 'other');
+        const cost = calculateSubscriptionDailyCost(sub.cycle_price, sub.billing_cycle);
+        return {
+          name: sub.name,
+          icon: sub.icon ?? cat.icon,
+          dailyCost: Number.isFinite(cost) ? cost : 0,
+          extra: sub.billing_cycle === 'monthly'
+            ? '月付'
+            : sub.billing_cycle === 'quarterly'
+              ? '季付'
+              : '年付',
+        };
+      }).sort((a, b) => b.dailyCost - a.dailyCost);
+
+      const topStoredCards = sortedActiveStoredCards.map(card => {
+        const cat = getCategoryInfo('stored_card', card.category ?? 'other');
+        const cost = calculateStoredPrincipal(card.actual_paid, card.face_value, card.current_balance);
+        return {
+          name: card.name,
+          icon: card.icon ?? cat.icon,
+          dailyCost: Number.isFinite(cost) ? cost : 0,
+          extra: card.card_type === 'amount'
+            ? `${formatCurrency(card.current_balance)}`
+            : `${Math.round(card.current_balance)} 次`,
+        };
+      }).sort((a, b) => b.dailyCost - a.dailyCost);
+
+      return {
+        kind: 'summary',
+        assetDailyCost: filteredTotalAssetDailyCost,
+        assetCount: filteredActiveItems.length,
+        realizedProfit: filteredRealizedProfit,
+        subscriptionDailyCost: totalSubscriptionCost,
+        installmentDailyDebt: totalInstallmentDebt,
+        storedPrincipal: totalPrincipal,
+        storedCardCount: activeStoredCards.length,
+        topAssets,
+        topSubscriptions,
+        topStoredCards,
+      };
+    },
     [
+      filteredActiveItems,
       filteredTotalAssetDailyCost,
-      filteredActiveItems.length,
       filteredRealizedProfit,
       totalSubscriptionCost,
       totalInstallmentDebt,
       totalPrincipal,
       activeStoredCards.length,
+      sortedActiveSubscriptions,
+      sortedActiveStoredCards,
+      getCategoryInfo,
     ],
   );
 

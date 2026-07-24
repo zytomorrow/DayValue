@@ -8,6 +8,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { THEME } from '../utils/constants';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 
+export type ShareItemEntry = {
+  name: string;
+  icon: string;
+  dailyCost: number;
+  extra: string;
+};
+
 export type ShareCardData =
   | {
       kind: 'summary';
@@ -18,6 +25,9 @@ export type ShareCardData =
       installmentDailyDebt: number;
       storedPrincipal: number;
       storedCardCount: number;
+      topAssets: ShareItemEntry[];
+      topSubscriptions: ShareItemEntry[];
+      topStoredCards: ShareItemEntry[];
     }
   | {
       kind: 'item';
@@ -43,6 +53,7 @@ export type ShareCardData =
     };
 
 const CARD_WIDTH = 320;
+const TOP_LIMIT = 5;
 
 export function ShareCard({ data }: { data: ShareCardData }) {
   return (
@@ -109,7 +120,71 @@ function SummaryBody({ data }: { data: Extract<ShareCardData, { kind: 'summary' 
           accent={THEME.colors.textPrimary}
         />
       </View>
+
+      {data.topAssets.length > 0 && (
+        <EntryList
+          title="日均成本 Top 资产"
+          accent={THEME.colors.primary}
+          entries={data.topAssets}
+        />
+      )}
+      {data.topSubscriptions.length > 0 && (
+        <EntryList
+          title="订阅明细"
+          accent={THEME.colors.accent}
+          entries={data.topSubscriptions}
+        />
+      )}
+      {data.topStoredCards.length > 0 && (
+        <EntryList
+          title="沉睡卡包"
+          accent={THEME.colors.warning}
+          entries={data.topStoredCards}
+        />
+      )}
     </>
+  );
+}
+
+function EntryList({
+  title,
+  accent,
+  entries,
+}: {
+  title: string;
+  accent: string;
+  entries: ShareItemEntry[];
+}) {
+  return (
+    <View style={styles.entryListWrap}>
+      <View style={[styles.entryListHeader, { backgroundColor: accent }]}>
+        <Text style={styles.entryListTitle} numberOfLines={1}>
+          {title}
+        </Text>
+      </View>
+      <View style={styles.entryListBody}>
+        {entries.slice(0, TOP_LIMIT).map((entry, index) => (
+          <View
+            key={`${entry.name}-${index}`}
+            style={[styles.entryRow, index > 0 && styles.entryRowDivider]}
+          >
+            <Text style={styles.entryIcon}>{entry.icon}</Text>
+            <Text style={styles.entryName} numberOfLines={1}>
+              {entry.name}
+            </Text>
+            <Text style={styles.entryExtra} numberOfLines={1}>
+              {entry.extra}
+            </Text>
+            <Text style={[styles.entryCost, { color: accent }]}>
+              {formatCurrency(entry.dailyCost)}
+            </Text>
+          </View>
+        ))}
+        {entries.length > TOP_LIMIT && (
+          <Text style={styles.entryMore}>还有 {entries.length - TOP_LIMIT} 项未展示</Text>
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -118,7 +193,7 @@ function SingleBody({
 }: {
   data: Extract<ShareCardData, { kind: 'item' }> | Extract<ShareCardData, { kind: 'subscription' }>;
 }) {
-  const heroLabel = data.kind === 'item' ? '日均成本' : '日均成本';
+  const heroLabel = '日均成本';
   return (
     <>
       <View style={styles.singleHeader}>
@@ -299,6 +374,64 @@ const styles = StyleSheet.create({
   },
   statValueSmall: {
     fontSize: 12,
+  },
+  entryListWrap: {
+    borderWidth: 1.5,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: THEME.borderRadius,
+    overflow: 'hidden',
+    backgroundColor: THEME.colors.surface,
+  },
+  entryListHeader: {
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+  },
+  entryListTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: THEME.colors.surface,
+    letterSpacing: 0.5,
+  },
+  entryListBody: {
+    paddingVertical: 2,
+  },
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 6,
+  },
+  entryRowDivider: {
+    borderTopWidth: 1,
+    borderColor: THEME.colors.border,
+  },
+  entryIcon: {
+    fontSize: 16,
+  },
+  entryName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    minWidth: 0,
+  },
+  entryExtra: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    maxWidth: 70,
+  },
+  entryCost: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  entryMore: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 6,
   },
   singleHeader: {
     flexDirection: 'row',

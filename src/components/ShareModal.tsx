@@ -6,6 +6,7 @@ import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -68,13 +69,20 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
 
           <View style={styles.previewWrap}>
             {data && (
-              <ViewShot
-                ref={shotRef}
-                options={{ format: 'png', quality: 1, result: 'tmpfile' }}
-                style={styles.shot}
+              <ScrollView
+                style={styles.previewScroll}
+                contentContainerStyle={styles.previewContent}
+                showsVerticalScrollIndicator={false}
+                bounces
               >
-                <ShareCard data={data} />
-              </ViewShot>
+                <ViewShot
+                  ref={shotRef}
+                  options={{ format: 'png', quality: 1, result: 'tmpfile' }}
+                  style={styles.shot}
+                >
+                  <ShareCard data={data} />
+                </ViewShot>
+              </ScrollView>
             )}
           </View>
 
@@ -157,12 +165,24 @@ const styles = StyleSheet.create({
     color: THEME.colors.surface,
   },
   previewWrap: {
-    padding: 20,
+    maxHeight: '70%',
+    paddingVertical: 16,
     alignItems: 'center',
     backgroundColor: THEME.colors.background,
   },
+  previewScroll: {
+    width: '100%',
+  },
+  previewContent: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    paddingBottom: 20,
+  },
   shot: {
-    // 让 ViewShot 容器贴合卡片宽度
+    // 给截图容器一个固定宽度，避免预览与截图尺寸不一致
+    width: 320,
+    alignSelf: 'center',
   },
   actions: {
     paddingHorizontal: 16,
