@@ -40,8 +40,11 @@ interface DashboardHeroHeaderProps {
   onPressHelp: () => void;
   onPressShare: () => void;
   onPressCabinet: () => void;
+  onPressAnnualReport: () => void;
+  onPressCalendar: () => void;
   onPressAssetFilterTrigger: () => void;
   onClearAssetFilter: () => void;
+  onTabChange: (tab: DashboardTabKey) => void;
 }
 
 export function DashboardHeroHeader({
@@ -64,8 +67,11 @@ export function DashboardHeroHeader({
   onPressHelp,
   onPressShare,
   onPressCabinet,
+  onPressAnnualReport,
+  onPressCalendar,
   onPressAssetFilterTrigger,
   onClearAssetFilter,
+  onTabChange,
 }: DashboardHeroHeaderProps) {
   const { themeId } = useTheme();
   const styles = useMemo(() => createStyles(), [themeId]);
@@ -83,6 +89,22 @@ export function DashboardHeroHeader({
       <View style={styles.titleRow}>
         <Text style={styles.title}>DayValue</Text>
         <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={onPressAnnualReport}
+            activeOpacity={0.7}
+            accessibilityLabel="年度回顾"
+          >
+            <Text style={styles.iconText}>📈</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={onPressCalendar}
+            activeOpacity={0.7}
+            accessibilityLabel="资产日历"
+          >
+            <Text style={styles.iconText}>📅</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
             onPress={onPressShare}
@@ -103,6 +125,7 @@ export function DashboardHeroHeader({
             style={styles.iconButton}
             onPress={onPressStatistics}
             activeOpacity={0.7}
+            accessibilityLabel="统计详情"
           >
             <Text style={styles.iconText}>📊</Text>
           </TouchableOpacity>
@@ -110,6 +133,7 @@ export function DashboardHeroHeader({
             style={styles.iconButton}
             onPress={onPressSettings}
             activeOpacity={0.7}
+            accessibilityLabel="设置"
           >
             <Text style={styles.iconText}>⚙️</Text>
           </TouchableOpacity>
@@ -117,6 +141,7 @@ export function DashboardHeroHeader({
             style={styles.helpButton}
             onPress={onPressHelp}
             activeOpacity={0.7}
+            accessibilityLabel="帮助"
           >
             <Text style={styles.helpText}>?</Text>
           </TouchableOpacity>
@@ -207,6 +232,28 @@ export function DashboardHeroHeader({
           </View>
         </View>
       </View>
+
+      <View style={styles.tabsRow}>
+        {([
+          { key: 'assets', label: '买断资产' },
+          { key: 'debts', label: '每日消耗' },
+          { key: 'stored_cards', label: '沉睡卡包' },
+        ] as const).map(tab => {
+          const isActive = activeTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tabButton, isActive && styles.tabButtonActive]}
+              onPress={() => onTabChange(tab.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -231,24 +278,24 @@ const createStyles = () => StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   iconButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconText: {
-    fontSize: 13,
+    fontSize: 12,
   },
   helpButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.7)',
     justifyContent: 'center',
@@ -360,5 +407,34 @@ const createStyles = () => StyleSheet.create({
     fontSize: 10,
     color: THEME.colors.onPrimary,
     fontWeight: '700',
+  },
+  // 底部 tab 切换行，作为 Hero 的一部分，省掉独立一行
+  tabsRow: {
+    flexDirection: 'row',
+    marginTop: THEME.spacing.sm,
+    gap: 6,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    alignItems: 'center',
+  },
+  tabButtonActive: {
+    borderColor: THEME.colors.onPrimary,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  tabText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.75)',
+  },
+  tabTextActive: {
+    color: THEME.colors.onPrimary,
+    fontWeight: '900',
   },
 });

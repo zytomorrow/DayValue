@@ -1516,8 +1516,11 @@ export function DashboardScreen({ navigation }: Props) {
           onPressHelp={() => setHelpModalVisible(true)}
           onPressShare={handleShareSummary}
           onPressCabinet={() => navigation.navigate('Cabinet')}
+          onPressAnnualReport={() => navigation.navigate('AnnualReport')}
+          onPressCalendar={() => navigation.navigate('Calendar')}
           onPressAssetFilterTrigger={() => setAssetFilterSheetVisible(true)}
           onClearAssetFilter={() => setSelectedAssetCategoryId(null)}
+          onTabChange={setActiveTab}
         />
 
         {monthlyBudgetInfo && (
@@ -1571,25 +1574,6 @@ export function DashboardScreen({ navigation }: Props) {
             </View>
           </View>
         )}
-
-        <View style={styles.quickAccessRow}>
-          <TouchableOpacity
-            style={styles.quickAccessBtn}
-            onPress={() => navigation.navigate('AnnualReport')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickAccessEmoji}>📊</Text>
-            <Text style={styles.quickAccessLabel}>年度回顾</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickAccessBtn}
-            onPress={() => navigation.navigate('Calendar')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickAccessEmoji}>📅</Text>
-            <Text style={styles.quickAccessLabel}>资产日历</Text>
-          </TouchableOpacity>
-        </View>
 
         {reminderEnabled && suggestions.length > 0 && (
           <View style={styles.suggestionSection}>
@@ -1655,36 +1639,6 @@ export function DashboardScreen({ navigation }: Props) {
             </ScrollView>
           </View>
         )}
-
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'assets' && styles.tabActive]}
-            onPress={() => setActiveTab('assets')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabText, activeTab === 'assets' && styles.tabTextActive]}>
-              买断资产
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'debts' && styles.tabActiveDebt]}
-            onPress={() => setActiveTab('debts')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabText, activeTab === 'debts' && styles.tabTextActiveDebt]}>
-              每日消耗
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'stored_cards' && styles.tabActiveStored]}
-            onPress={() => setActiveTab('stored_cards')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabText, activeTab === 'stored_cards' && styles.tabTextActiveStored]}>
-              沉睡卡包
-            </Text>
-          </TouchableOpacity>
-        </View>
 
         {activeTab === 'assets' && renderAssetsTab()}
         {activeTab === 'debts' && renderDebtsTab()}
