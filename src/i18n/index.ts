@@ -1,5 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { I18nManager } from 'react-native';
 import zhCN from './zh-CN.json';
 import enUS from './en-US.json';
 
@@ -9,14 +10,19 @@ export const SUPPORTED_LANGUAGES: { id: AppLanguage; name: string; nativeName: s
   { id: 'en-US', name: 'English', nativeName: 'English' },
 ];
 
+/**
+ * 检测系统初始语言。
+ *
+ * 不使用 expo-localization：该原生模块与当前 expo-modules-core 版本存在
+ * NoSuchMethodError（getDirectConverter），会在原生模块注册阶段直接闪退，
+ * 任何 JS 层的延迟加载都无法拦截。改用 React Native 内置的 I18nManager，
+ * 零额外原生依赖，能稳定拿到系统首选 locale。
+ */
 function detectInitialLanguage(): AppLanguage {
   try {
-    // 延迟 require，避免 expo-localization 原生模块未链接时
-    // 在 import 阶段抛错导致整个应用启动闪退。
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getLocales } = require('expo-localization');
-    const locales = getLocales();
-    const lang = locales[0]?.languageCode ?? 'zh';
+    const localeIdentifier: string | undefined = I18nManager.getConstants().localeIdentifier;
+    if (!localeIdentifier) return 'zh-CN';
+    const lang = localeIdentifier.toLowerCase();
     return lang.startsWith('en') ? 'en-US' : 'zh-CN';
   } catch {
     return 'zh-CN';
