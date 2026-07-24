@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import type { CategoryInfo } from '../types';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { BrutalButton } from './BrutalButton';
 import { AppBottomSheet } from './AppBottomSheet';
 
@@ -36,6 +37,8 @@ export function AssetCategorySheet({
     () => categories.reduce((sum, category) => sum + category.count, 0),
     [categories],
   );
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
 
   return (
     <AppBottomSheet
@@ -103,7 +106,7 @@ export function AssetCategorySheet({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   sheetContent: {
     maxHeight: 440,
   },

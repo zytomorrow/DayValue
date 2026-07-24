@@ -21,6 +21,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { formatDate } from '../utils/formatters';
 
 interface DatePickerFieldProps {
@@ -59,6 +60,8 @@ function parseValue(value: string): { year: number; month: number; day: number }
 
 export function DatePickerField({ label, value, onChange, style }: DatePickerFieldProps) {
   const [show, setShow] = useState(false);
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
 
   const dateValue = useMemo(() => parseValue(value), [value]);
 
@@ -111,6 +114,8 @@ function PixelDatePickerModal({
   onClose,
 }: ModalProps) {
   const [year, setYear] = useState(initialYear);
+  const { themeId } = useTheme();
+  const modalStyles = useMemo(() => createModalStyles(), [themeId]);
   const [month, setMonth] = useState(initialMonth);
   const [day, setDay] = useState(initialDay);
   const [mounted, setMounted] = useState(visible);
@@ -238,6 +243,8 @@ interface WheelColumnProps<T extends number> {
 
 function WheelColumn<T extends number>({ data, value, onChange, format }: WheelColumnProps<T>) {
   const scrollRef = useRef<ScrollView>(null);
+  const { themeId } = useTheme();
+  const wheelStyles = useMemo(() => createWheelStyles(), [themeId]);
   const [layoutReady, setLayoutReady] = useState(false);
 
   const selectedIndex = Math.max(0, data.indexOf(value));
@@ -310,7 +317,7 @@ function WheelColumn<T extends number>({ data, value, onChange, format }: WheelC
 
 // ===================== 样式 =====================
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     marginBottom: THEME.spacing.md,
   },
@@ -339,7 +346,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const modalStyles = StyleSheet.create({
+const createModalStyles = () => StyleSheet.create({
   root: {
     flex: 1,
     justifyContent: 'center',
@@ -361,20 +368,20 @@ const modalStyles = StyleSheet.create({
     left: 5,
     right: 0,
     bottom: 0,
-    backgroundColor: '#000000',
+    backgroundColor: THEME.colors.borderDark,
     borderRadius: THEME.borderRadius,
   },
   card: {
     backgroundColor: THEME.colors.surface,
     borderWidth: 2,
-    borderColor: '#000000',
+    borderColor: THEME.colors.borderDark,
     borderRadius: THEME.borderRadius,
     overflow: 'hidden',
   },
   titleBar: {
     backgroundColor: THEME.colors.primary,
     borderBottomWidth: 2,
-    borderBottomColor: '#000000',
+    borderBottomColor: THEME.colors.borderDark,
     paddingHorizontal: THEME.spacing.md,
     paddingVertical: THEME.spacing.md,
   },
@@ -382,7 +389,7 @@ const modalStyles = StyleSheet.create({
     fontFamily: THEME.fontFamily.pixel,
     fontSize: 11,
     lineHeight: 16,
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
     textAlign: 'center',
     letterSpacing: 0.5,
   },
@@ -407,13 +414,13 @@ const modalStyles = StyleSheet.create({
     gap: THEME.spacing.sm,
     padding: THEME.spacing.md,
     borderTopWidth: 2,
-    borderTopColor: '#000000',
+    borderTopColor: THEME.colors.borderDark,
     backgroundColor: THEME.colors.background,
   },
   button: {
     flex: 1,
     borderWidth: 2,
-    borderColor: '#000000',
+    borderColor: THEME.colors.borderDark,
     borderRadius: THEME.borderRadius,
     paddingVertical: THEME.spacing.sm + 2,
     alignItems: 'center',
@@ -433,11 +440,11 @@ const modalStyles = StyleSheet.create({
   buttonPrimaryText: {
     fontSize: THEME.fontSize.md,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
 });
 
-const wheelStyles = StyleSheet.create({
+const createWheelStyles = () => StyleSheet.create({
   column: {
     flex: 1,
     height: PICKER_HEIGHT,

@@ -3,7 +3,7 @@
  *
  * 用于列表页内联搜索，支持清除按钮与受控文本。
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -14,6 +14,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface SearchBarProps {
   value: string;
@@ -28,6 +29,8 @@ export function SearchBar({
   placeholder = '搜索...',
   style,
 }: SearchBarProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={[styles.container, style]}>
       <Text style={styles.icon}>🔍</Text>
@@ -55,7 +58,7 @@ export function SearchBar({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

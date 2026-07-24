@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import React, { useEffect, useRef, useState, useMemo, type ReactNode } from 'react';
 import {
   Animated,
   Easing,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 export interface AppBottomSheetProps {
   visible: boolean;
@@ -31,6 +32,8 @@ export function AppBottomSheet({
   contentStyle,
 }: AppBottomSheetProps) {
   const insets = useSafeAreaInsets();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const [mounted, setMounted] = useState(visible);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(28)).current;
@@ -116,7 +119,7 @@ export function AppBottomSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   root: {
     flex: 1,
     justifyContent: 'flex-end',

@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { initDB } from './src/database';
 import { CategoriesProvider } from './src/contexts/CategoriesContext';
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { CustomSplashScreen, PixelAlertRoot } from './src/components';
 import {
   DashboardScreen,
@@ -34,28 +35,104 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-const screenOptions: NativeStackNavigationOptions = {
-  headerStyle: {
-    backgroundColor: THEME.colors.primary,
-  },
-  headerTintColor: '#FFFFFF',
-  headerTitleStyle: {
-    fontWeight: '700',
-    fontSize: THEME.fontSize.lg,
-  },
-  statusBarStyle: 'light',
-  statusBarBackgroundColor: THEME.colors.primary,
-  statusBarAnimation: 'fade',
-  contentStyle: {
-    backgroundColor: THEME.colors.background,
-  },
-};
-
 function LoadingFallback() {
   return (
-    <View style={styles.loading}>
+    <View style={loadingStyles.loading}>
       <ActivityIndicator size="large" color={THEME.colors.primary} />
     </View>
+  );
+}
+
+function AppNavigator() {
+  const { theme } = useTheme();
+
+  const screenOptions: NativeStackNavigationOptions = {
+    headerStyle: {
+      backgroundColor: theme.colors.primary,
+    },
+    headerTintColor: theme.colors.onPrimary,
+    headerTitleStyle: {
+      fontWeight: '700',
+      fontSize: theme.fontSize.lg,
+    },
+    statusBarStyle: theme.colors.statusBar,
+    statusBarBackgroundColor: theme.colors.primary,
+    statusBarAnimation: 'fade',
+    contentStyle: {
+      backgroundColor: theme.colors.background,
+    },
+  };
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen
+          name="Dashboard"
+          component={DashboardScreen}
+          options={{
+            headerShown: false,
+            statusBarStyle: theme.colors.statusBar,
+            statusBarBackgroundColor: 'transparent',
+            statusBarTranslucent: true,
+          }}
+        />
+        <Stack.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{ title: '设置' }}
+        />
+        <Stack.Screen
+          name="Backup"
+          component={BackupScreen}
+          options={{ title: '备份与恢复' }}
+        />
+        <Stack.Screen
+          name="Cabinet"
+          component={CabinetScreen}
+          options={{ title: '数字陈列柜' }}
+        />
+        <Stack.Screen
+          name="AddEditItem"
+          component={AddEditItemScreen}
+          options={{ title: '添加物品' }}
+        />
+        <Stack.Screen
+          name="AddEditSubscription"
+          component={AddEditSubscriptionScreen}
+          options={{ title: '添加订阅' }}
+        />
+        <Stack.Screen
+          name="ItemDetail"
+          component={ItemDetailScreen}
+          options={{ title: '物品详情' }}
+        />
+        <Stack.Screen
+          name="SubscriptionDetail"
+          component={SubscriptionDetailScreen}
+          options={{ title: '订阅详情' }}
+        />
+        <Stack.Screen
+          name="Categories"
+          component={CategoriesScreen}
+          options={{ title: '分类管理' }}
+        />
+        <Stack.Screen
+          name="Statistics"
+          component={StatisticsScreen}
+          options={{ title: '统计' }}
+        />
+        <Stack.Screen
+          name="AddEditStoredCard"
+          component={AddEditStoredCardScreen}
+          options={{ title: '新增储值卡' }}
+        />
+        <Stack.Screen
+          name="About"
+          component={AboutScreen}
+          options={{ title: '关于' }}
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
@@ -71,79 +148,13 @@ export default function App() {
     <>
       <React.Suspense fallback={<LoadingFallback />}>
         <SQLiteProvider databaseName="dayvalue.db" onInit={initDB}>
-          <CategoriesProvider>
-            <SafeAreaProvider>
-              <NavigationContainer>
-                <Stack.Navigator screenOptions={screenOptions}>
-                  <Stack.Screen
-                    name="Dashboard"
-                    component={DashboardScreen}
-                    options={{
-                      headerShown: false,
-                      statusBarStyle: 'light',
-                      statusBarBackgroundColor: 'transparent',
-                      statusBarTranslucent: true,
-                    }}
-                  />
-                  <Stack.Screen
-                    name="Settings"
-                    component={SettingsScreen}
-                    options={{ title: '设置' }}
-                  />
-                  <Stack.Screen
-                    name="Backup"
-                    component={BackupScreen}
-                    options={{ title: '备份与恢复' }}
-                  />
-                  <Stack.Screen
-                    name="Cabinet"
-                    component={CabinetScreen}
-                    options={{ title: '数字陈列柜' }}
-                  />
-                  <Stack.Screen
-                    name="AddEditItem"
-                    component={AddEditItemScreen}
-                    options={{ title: '添加物品' }}
-                  />
-                  <Stack.Screen
-                    name="AddEditSubscription"
-                    component={AddEditSubscriptionScreen}
-                    options={{ title: '添加订阅' }}
-                  />
-                  <Stack.Screen
-                    name="ItemDetail"
-                    component={ItemDetailScreen}
-                    options={{ title: '物品详情' }}
-                  />
-                  <Stack.Screen
-                    name="SubscriptionDetail"
-                    component={SubscriptionDetailScreen}
-                    options={{ title: '订阅详情' }}
-                  />
-                  <Stack.Screen
-                    name="Categories"
-                    component={CategoriesScreen}
-                    options={{ title: '分类管理' }}
-                  />
-                  <Stack.Screen
-                    name="Statistics"
-                    component={StatisticsScreen}
-                    options={{ title: '统计' }}
-                  />
-                  <Stack.Screen
-                    name="AddEditStoredCard"
-                    component={AddEditStoredCardScreen}
-                    options={{ title: '新增储值卡' }}
-                  />
-                  <Stack.Screen
-                    name="About"
-                    component={AboutScreen}
-                    options={{ title: '关于' }}
-                  />
-                </Stack.Navigator>
-              </NavigationContainer>
-            </SafeAreaProvider>
-          </CategoriesProvider>
+          <ThemeProvider>
+            <CategoriesProvider>
+              <SafeAreaProvider>
+                <AppNavigator />
+              </SafeAreaProvider>
+            </CategoriesProvider>
+          </ThemeProvider>
         </SQLiteProvider>
       </React.Suspense>
 
@@ -158,7 +169,7 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+const loadingStyles = StyleSheet.create({
   loading: {
     flex: 1,
     justifyContent: 'center',

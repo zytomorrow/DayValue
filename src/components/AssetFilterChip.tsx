@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import type { CategoryInfo } from '../types';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 export interface AssetFilterChipProps {
   selectedCategory: CategoryInfo | null;
@@ -21,6 +22,8 @@ export function AssetFilterChip({
   onPressTrigger,
   onClear,
 }: AssetFilterChipProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   if (!isFiltered) {
     return (
       <TouchableOpacity
@@ -67,7 +70,7 @@ export function AssetFilterChip({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   inlineGroup: {
     flexDirection: 'row',
     alignItems: 'center',

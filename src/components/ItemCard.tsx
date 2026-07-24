@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import {
   calculateAssetHealth,
@@ -31,6 +32,8 @@ interface ItemCardProps {
 
 export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProps) {
   const { getCategoryInfo } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const category = getCategoryInfo('item', item.category ?? 'other');
   const icon = item.icon ?? category.icon;
   const imageUri = item.image_uri ?? null;
@@ -225,7 +228,7 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',

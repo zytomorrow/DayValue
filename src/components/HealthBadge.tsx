@@ -2,9 +2,10 @@
  * HealthBadge - 资产健康度徽章
  * 综合服役进度、保修状态、资产状态给出 0-100 评分与等级徽章。
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import type { HealthGrade } from '../utils/calculations';
 
 interface HealthBadgeProps {
@@ -23,14 +24,14 @@ const GRADE_META: Record<
     label: '优秀',
     short: 'A',
     bg: THEME.colors.success,
-    text: '#FFFFFF',
+    text: THEME.colors.onPrimary,
     emoji: '💪',
   },
   good: {
     label: '良好',
     short: 'B',
     bg: THEME.colors.accent,
-    text: '#FFFFFF',
+    text: THEME.colors.onPrimary,
     emoji: '✓',
   },
   fair: {
@@ -44,7 +45,7 @@ const GRADE_META: Record<
     label: '堪忧',
     short: 'D',
     bg: THEME.colors.danger,
-    text: '#FFFFFF',
+    text: THEME.colors.onPrimary,
     emoji: '!',
   },
   unknown: {
@@ -62,6 +63,8 @@ export function HealthBadge({
   compact = false,
   style,
 }: HealthBadgeProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const meta = GRADE_META[grade];
 
   if (compact) {
@@ -97,7 +100,7 @@ export function HealthBadge({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

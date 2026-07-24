@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface StatusBadgeProps {
   status: 'unredeemed' | 'active' | 'archived';
@@ -11,6 +12,8 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, type = 'item', labelOverride }: StatusBadgeProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const label = labelOverride ?? (
     status === 'unredeemed'
       ? '未赎身'
@@ -42,7 +45,7 @@ export function StatusBadge({ status, type = 'item', labelOverride }: StatusBadg
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -53,6 +56,6 @@ const styles = StyleSheet.create({
   text: {
     fontSize: THEME.fontSize.xs,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
 });

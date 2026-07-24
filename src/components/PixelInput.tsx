@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   TextInput,
@@ -8,6 +8,7 @@ import {
   type KeyboardTypeOptions,
 } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface PixelInputProps {
   label: string;
@@ -36,6 +37,8 @@ export function PixelInput({
   autoCorrect = true,
   style,
 }: PixelInputProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={[styles.container, style]}>
       <Text style={styles.label}>{label}</Text>
@@ -60,7 +63,7 @@ export function PixelInput({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     marginBottom: THEME.spacing.md,
   },

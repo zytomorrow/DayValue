@@ -18,8 +18,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types';
 import { initDB, getPreference, setPreference } from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { BrutalButton } from '../components';
-import { THEME } from '../utils/constants';
+import { THEME, THEME_LIST, type ThemeId } from '../utils/constants';
 import { deleteAllEntityImagesAsync } from '../utils/entityImages';
 import { alertConfirm, alertError, alertSuccess, showPixelAlert } from '../utils/pixelAlert';
 
@@ -129,6 +130,8 @@ function SettingRow({
 export function SettingsScreen({ navigation }: Props) {
   const db = useSQLiteContext();
   const { refreshCategories } = useCategories();
+  const { themeId, setThemeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [cacheCleaning, setCacheCleaning] = useState(false);
@@ -402,6 +405,74 @@ export function SettingsScreen({ navigation }: Props) {
           <SettingRow title="当前版本" value={currentVersion} showChevron={false} last />
         </BrutalCard>
 
+        <BrutalCard title="界面主题" titleColor={THEME.colors.primaryLight}>
+          <Text style={styles.themePickerHint}>
+            选择你喜欢的配色方案，切换后立即生效并自动保存
+          </Text>
+          <View style={styles.themeGrid}>
+            {THEME_LIST.map(theme => {
+              const isActive = theme.id === themeId;
+              return (
+                <TouchableOpacity
+                  key={theme.id}
+                  style={[
+                    styles.themeCard,
+                    isActive && styles.themeCardActive,
+                  ]}
+                  onPress={() => setThemeId(theme.id as ThemeId)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.themeSwatchRow}>
+                    <View
+                      style={[
+                        styles.themeSwatch,
+                        { backgroundColor: theme.colors.primary },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.themeSwatch,
+                        { backgroundColor: theme.colors.accent },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.themeSwatch,
+                        { backgroundColor: theme.colors.success },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.themeSwatch,
+                        { backgroundColor: theme.colors.warning },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.themeSwatch,
+                        { backgroundColor: theme.colors.danger },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.themeInfo}>
+                    <Text style={styles.themeName}>
+                      {theme.emoji} {theme.name}
+                    </Text>
+                    <Text style={styles.themeDesc} numberOfLines={2}>
+                      {theme.description}
+                    </Text>
+                  </View>
+                  {isActive && (
+                    <View style={styles.themeCheckBadge}>
+                      <Text style={styles.themeCheckText}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </BrutalCard>
+
         <BrutalCard title="提醒设置" titleColor={THEME.colors.accent}>
           <View style={styles.row}>
             <View style={styles.reminderLabelBox}>
@@ -414,7 +485,7 @@ export function SettingsScreen({ navigation }: Props) {
               value={reminderEnabled}
               onValueChange={handleToggleReminder}
               trackColor={{ false: THEME.colors.border, true: THEME.colors.accent }}
-              thumbColor="#FFFFFF"
+              thumbColor={THEME.colors.surface}
               ios_backgroundColor={THEME.colors.border}
             />
           </View>
@@ -534,7 +605,7 @@ export function SettingsScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: THEME.colors.background,
@@ -669,5 +740,72 @@ const styles = StyleSheet.create({
     color: THEME.colors.warning,
     marginTop: 4,
     fontWeight: '700',
+  },
+  themePickerHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginBottom: THEME.spacing.md,
+    fontWeight: '600',
+  },
+  themeGrid: {
+    gap: THEME.spacing.md,
+  },
+  themeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: THEME.spacing.md,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 2,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    gap: THEME.spacing.md,
+    position: 'relative',
+  },
+  themeCardActive: {
+    borderColor: THEME.colors.primary,
+    backgroundColor: THEME.colors.surface,
+    ...THEME.pixelShadow,
+  },
+  themeSwatchRow: {
+    flexDirection: 'row',
+    gap: 0,
+  },
+  themeSwatch: {
+    width: 18,
+    height: 36,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.borderDark,
+    marginRight: -1.5,
+  },
+  themeInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  themeName: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  themeDesc: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: THEME.colors.textSecondary,
+    lineHeight: 14,
+  },
+  themeCheckBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.primary,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  themeCheckText: {
+    color: THEME.colors.onPrimary,
+    fontSize: 12,
+    fontWeight: '900',
   },
 });

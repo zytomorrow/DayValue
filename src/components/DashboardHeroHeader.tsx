@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { CategoryInfo } from '../types';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { formatCurrency } from '../utils/formatters';
 import { AssetFilterChip } from './AssetFilterChip';
 
@@ -182,15 +183,15 @@ export function DashboardHeroHeader({
         </View>
         <View style={styles.statusRow}>
           <View style={styles.statusChip}>
-            <View style={[styles.statusDot, { backgroundColor: '#7BED9F' }]} />
+            <View style={[styles.statusDot, { backgroundColor: THEME.colors.success }]} />
             <Text style={styles.statusText}>服役 {statusCounts.active}</Text>
           </View>
           <View style={styles.statusChip}>
-            <View style={[styles.statusDot, { backgroundColor: '#FFEAA7' }]} />
+            <View style={[styles.statusDot, { backgroundColor: THEME.colors.warning }]} />
             <Text style={styles.statusText}>停用 {statusCounts.paused}</Text>
           </View>
           <View style={styles.statusChip}>
-            <View style={[styles.statusDot, { backgroundColor: '#FFB7B2' }]} />
+            <View style={[styles.statusDot, { backgroundColor: THEME.colors.danger }]} />
             <Text style={styles.statusText}>售出 {statusCounts.sold}</Text>
           </View>
         </View>
@@ -199,7 +200,7 @@ export function DashboardHeroHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   hero: {
     paddingHorizontal: THEME.spacing.xl,
     paddingBottom: THEME.spacing.lg,
@@ -214,7 +215,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontFamily: THEME.fontFamily.pixel,
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
   actions: {
     flexDirection: 'row',
@@ -257,14 +258,14 @@ const styles = StyleSheet.create({
   },
   assetSubtitle: {
     fontSize: THEME.fontSize.sm,
-    color: '#FFFFFFCC',
+    color: THEME.colors.onPrimary,
     fontWeight: '700',
     marginRight: THEME.spacing.xs,
     flexShrink: 0,
   },
   subtitle: {
     fontSize: THEME.fontSize.sm,
-    color: '#FFFFFFAA',
+    color: THEME.colors.onPrimary,
     marginBottom: 4,
     marginTop: 6,
   },
@@ -277,7 +278,7 @@ const styles = StyleSheet.create({
   cost: {
     fontSize: 22,
     fontFamily: THEME.fontFamily.pixel,
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
     marginBottom: 4,
   },
   unit: {
@@ -286,7 +287,7 @@ const styles = StyleSheet.create({
   },
   assetHint: {
     fontSize: THEME.fontSize.xs,
-    color: '#FFFFFFCC',
+    color: THEME.colors.onPrimary,
     lineHeight: 18,
   },
   storedHint: {
@@ -309,14 +310,14 @@ const styles = StyleSheet.create({
   },
   netWorthLabel: {
     fontSize: 10,
-    color: '#FFFFFFAA',
+    color: THEME.colors.onPrimary,
     fontWeight: '700',
     marginBottom: 2,
   },
   netWorthValue: {
     fontSize: THEME.fontSize.md,
     fontFamily: THEME.fontFamily.pixel,
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
   statusRow: {
     flexDirection: 'row',
@@ -342,7 +343,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    color: '#FFFFFFE6',
+    color: THEME.colors.onPrimary,
     fontWeight: '700',
   },
 });

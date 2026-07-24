@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface AssetSectionToolbarProps {
   title: string;
@@ -21,6 +22,8 @@ export function AssetSectionToolbar({
   onToggleLayout,
   onToggleGrouped,
 }: AssetSectionToolbarProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.toolbar}>
       <Text style={styles.title} numberOfLines={1}>
@@ -58,7 +61,7 @@ export function AssetSectionToolbar({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',

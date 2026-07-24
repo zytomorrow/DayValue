@@ -16,6 +16,7 @@ import {
 } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { ItemCard } from './ItemCard';
 
 type AssetLayout = 'list' | 'grid';
@@ -53,6 +54,8 @@ export function AssetGroupedList({
   layoutMode,
   onPressItem,
 }: AssetGroupedListProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const groups = useMemo<AssetGroup[]>(() => {
@@ -166,6 +169,8 @@ function GroupHeader({
   collapsed: boolean;
   onToggle: () => void;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <TouchableOpacity
       style={styles.header}
@@ -192,7 +197,7 @@ function GroupHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   wrap: {
     gap: THEME.spacing.md,
   },

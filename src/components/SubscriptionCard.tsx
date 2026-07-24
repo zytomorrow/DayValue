@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
@@ -25,6 +26,8 @@ export function SubscriptionCard({
   layout = 'list',
 }: SubscriptionCardProps) {
   const { getCategoryInfo } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const category = getCategoryInfo('subscription', subscription.category ?? 'other');
   const icon = subscription.icon ?? category.icon;
   const imageUri = subscription.image_uri ?? null;
@@ -142,7 +145,7 @@ export function SubscriptionCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',

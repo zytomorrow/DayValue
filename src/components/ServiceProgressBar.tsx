@@ -2,9 +2,10 @@
  * ServiceProgressBar - 像素风服役进度条
  * 用方块刻度直观展示资产已服役进度（激活天数 / 预期使用天数）。
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ServiceProgressBarProps {
   /** 进度 0~1 */
@@ -27,6 +28,8 @@ export function ServiceProgressBar({
   label = '服役',
   style,
 }: ServiceProgressBarProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const clamped = Math.min(Math.max(progress, 0), 1);
   const filled = Math.round(clamped * BLOCK_COUNT);
   const fillColor = overService ? THEME.colors.danger : THEME.colors.success;
@@ -61,7 +64,7 @@ export function ServiceProgressBar({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

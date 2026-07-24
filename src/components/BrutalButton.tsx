@@ -2,7 +2,7 @@
  * BrutalButton - 新粗野主义风格按钮
  * 特征：2px 纯黑边框 + 右下角 4px 偏移的纯黑实心硬阴影（无模糊）
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -13,6 +13,7 @@ import {
   type TextStyle,
 } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 export interface BrutalButtonProps {
   title: string;
@@ -29,15 +30,15 @@ const BG: Record<string, string> = {
   accent:  THEME.colors.accent,
   danger:  THEME.colors.danger,
   success: THEME.colors.success,
-  outline: '#FFFFFF',
+  outline: THEME.colors.surface,
 };
 
 const FG: Record<string, string> = {
-  primary: '#FFFFFF',
-  accent:  '#FFFFFF',
-  danger:  '#FFFFFF',
-  success: '#FFFFFF',
-  outline: '#000000',
+  primary: THEME.colors.onPrimary,
+  accent:  THEME.colors.onPrimary,
+  danger:  THEME.colors.onPrimary,
+  success: THEME.colors.onPrimary,
+  outline: THEME.colors.borderDark,
 };
 
 const SIZING = {
@@ -56,8 +57,10 @@ export function BrutalButton({
   style,
 }: BrutalButtonProps) {
   const s = SIZING[size];
-  const bg = disabled ? '#CCCCCC' : BG[variant];
-  const fg = disabled ? '#999999' : FG[variant];
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
+  const bg = disabled ? THEME.colors.border : BG[variant];
+  const fg = disabled ? THEME.colors.textSecondary : FG[variant];
 
   return (
     // paddingRight + paddingBottom 为硬阴影留出空间
@@ -89,7 +92,7 @@ export function BrutalButton({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   wrapper: {
     paddingRight: 4,
     paddingBottom: 4,
@@ -100,12 +103,12 @@ const styles = StyleSheet.create({
     left: 4,
     right: 0,
     bottom: 0,
-    backgroundColor: '#000000',
+    backgroundColor: THEME.colors.borderDark,
     borderRadius: THEME.borderRadius,
   } as ViewStyle,
   button: {
     borderWidth: 2,
-    borderColor: '#000000',
+    borderColor: THEME.colors.borderDark,
     borderRadius: THEME.borderRadius,
     alignItems: 'center',
     justifyContent: 'center',

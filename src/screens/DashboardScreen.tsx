@@ -43,6 +43,7 @@ import {
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import {
   ItemCard,
   SubscriptionCard,
@@ -229,6 +230,8 @@ function SectionToolbar({
   onPressSort,
   onToggleLayout,
 }: SectionToolbarProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.sectionToolbar}>
       <Text style={styles.sectionToolbarTitle} numberOfLines={1}>
@@ -254,23 +257,25 @@ function SectionToolbar({
   );
 }
 
-function renderGridRows<T>(
-  items: T[],
-  keyPrefix: string,
-  renderCard: (item: T) => React.ReactElement,
-) {
-  return chunkItems(items, 2).map((rowItems, rowIndex) => (
-    <View key={`${keyPrefix}-${rowIndex}`} style={styles.gridRow}>
-      {rowItems.map(item => renderCard(item))}
-      {rowItems.length === 1 && <View style={styles.gridCardPlaceholder} />}
-    </View>
-  ));
-}
-
 export function DashboardScreen({ navigation }: Props) {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const { itemCategories, getCategoryInfo } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
+
+  function renderGridRows<T>(
+    items: T[],
+    keyPrefix: string,
+    renderCard: (item: T) => React.ReactElement,
+  ) {
+    return chunkItems(items, 2).map((rowItems, rowIndex) => (
+      <View key={`${keyPrefix}-${rowIndex}`} style={styles.gridRow}>
+        {rowItems.map(item => renderCard(item))}
+        {rowItems.length === 1 && <View style={styles.gridCardPlaceholder} />}
+      </View>
+    ));
+  }
 
   const [activeTab, setActiveTab] = useState<TabKey>('assets');
   const [items, setItems] = useState<OneTimeItem[]>([]);
@@ -1450,7 +1455,7 @@ export function DashboardScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <StatusBar style="light" translucent backgroundColor="transparent" animated />
+      <StatusBar style={THEME.colors.statusBar} translucent backgroundColor="transparent" animated />
       <View style={styles.container}>
         <DashboardHeroHeader
           activeTab={activeTab}
@@ -1821,7 +1826,7 @@ export function DashboardScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: THEME.colors.background,
@@ -1842,11 +1847,11 @@ const styles = StyleSheet.create({
   },
   budgetCardOver: {
     borderColor: THEME.colors.dangerDark,
-    backgroundColor: '#FFF5F5',
+    backgroundColor: THEME.colors.dangerBg,
   },
   budgetCardWarning: {
     borderColor: THEME.colors.warning,
-    backgroundColor: '#FFFBEA',
+    backgroundColor: THEME.colors.warningBg,
   },
   budgetHeader: {
     flexDirection: 'row',
@@ -2032,7 +2037,7 @@ const styles = StyleSheet.create({
   },
   fabText: {
     fontSize: 28,
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
     fontWeight: '700',
     lineHeight: 32,
   },
@@ -2114,7 +2119,7 @@ const styles = StyleSheet.create({
   },
   helpTagText: {
     fontSize: 11,
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
     fontWeight: '700',
   },
   helpBody: {
@@ -2146,7 +2151,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   reminderCard: {
-    backgroundColor: '#FFF8E1',
+    backgroundColor: THEME.colors.warningBg,
     borderWidth: 2,
     borderColor: THEME.colors.warning,
     borderRadius: THEME.borderRadius,
@@ -2206,7 +2211,7 @@ const styles = StyleSheet.create({
     marginLeft: THEME.spacing.sm,
   },
   dormantCardBanner: {
-    backgroundColor: '#FFF8E1',
+    backgroundColor: THEME.colors.warningBg,
     borderWidth: 2,
     borderColor: THEME.colors.warning,
     borderRadius: THEME.borderRadius,

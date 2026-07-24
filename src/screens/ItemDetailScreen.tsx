@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState, useMemo } from 'react';
 import {
   Animated,
   LayoutAnimation,
@@ -42,6 +42,7 @@ import {
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { BrutalButton, DatePickerField, EntityCover, HealthBadge, PixelInput, ServiceProgressBar, ShareModal, StatusBadge } from '../components';
 import type { ShareCardData } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
@@ -53,6 +54,8 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
   const { getCategoryInfo } = useCategories();
   const { itemId } = route.params;
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const [item, setItem] = useState<OneTimeItem | null>(null);
 
   const [pauseModalVisible, setPauseModalVisible] = useState(false);
@@ -722,7 +725,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               styles.warrantyCard,
               warrantyInfo.status === 'expired'
                 ? { borderColor: THEME.colors.dangerDark, backgroundColor: '#FFF0EE' }
-                : { borderColor: THEME.colors.warning, backgroundColor: '#FFF8E1' },
+                : { borderColor: THEME.colors.warning, backgroundColor: THEME.colors.warningBg },
             ]}
           >
             <Text style={styles.warrantyTitle}>
@@ -1153,7 +1156,7 @@ const infoStyles = StyleSheet.create({
   },
 });
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: THEME.colors.background,

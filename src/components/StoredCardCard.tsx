@@ -2,7 +2,7 @@
  * StoredCardCard - 沉睡卡包卡片组件
  * 包含：实际沉睡本金展示、储值卡余额更新弹窗、计次卡打卡按钮，以及沉睡预警。
  */
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import {
 } from '../utils/calculations';
 import { formatCurrency, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { StatusBadge } from './StatusBadge';
 import { BrutalButton } from './BrutalButton';
@@ -54,6 +55,8 @@ export function StoredCardCard({
 }: StoredCardCardProps) {
   const db = useSQLiteContext();
   const { getCategoryInfo } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const categoryInfo = getCategoryInfo('stored_card', card.category ?? 'other');
 
   const [amountModalVisible, setAmountModalVisible] = useState(false);
@@ -372,7 +375,7 @@ export function StoredCardCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

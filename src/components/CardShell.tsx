@@ -14,9 +14,10 @@
  * variant 差异仅体现在「图标色块」背景色与高亮栏底色，
  * 壳层本身保持统一。
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { TouchableOpacity, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 export type CardVariant = 'asset' | 'debt' | 'subscription' | 'stored_card';
 
@@ -72,6 +73,8 @@ export function CardShell({
   disabled = false,
   style,
 }: CardShellProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <TouchableOpacity
       style={[
@@ -89,7 +92,7 @@ export function CardShell({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   card: {
     backgroundColor: THEME.colors.surface,
     borderWidth: THEME.pixelBorder.borderWidth,

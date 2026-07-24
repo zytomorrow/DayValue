@@ -3,9 +3,10 @@
  * 用于生成可分享的图片：总览 / 买断资产 / 订阅 三种变体。
  * 固定宽度，独立排版，保证截图稳定且美观。
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 
 export type ShareItemEntry = {
@@ -58,6 +59,8 @@ export type ShareCardData =
 const CARD_WIDTH = 320;
 
 export function ShareCard({ data }: { data: ShareCardData }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.card}>
       <View style={styles.headerBar}>
@@ -82,6 +85,8 @@ export function ShareCard({ data }: { data: ShareCardData }) {
 }
 
 function SummaryBody({ data }: { data: Extract<ShareCardData, { kind: 'summary' }> }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <>
       <View style={styles.heroBlock}>
@@ -156,6 +161,8 @@ function EntryList({
   accent: string;
   entries: ShareItemEntry[];
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.entryListWrap}>
       <View style={[styles.entryListHeader, { backgroundColor: accent }]}>
@@ -191,6 +198,8 @@ function SingleBody({
 }: {
   data: Extract<ShareCardData, { kind: 'item' }> | Extract<ShareCardData, { kind: 'subscription' }>;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const heroLabel = '日均成本';
   return (
     <>
@@ -274,6 +283,8 @@ function EntryCover({
   imageUri?: string | null;
   size: number;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   if (imageUri) {
     return (
       <View
@@ -304,6 +315,8 @@ function StatCell({
   accent: string;
   small?: boolean;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.statCell}>
       <Text style={styles.statLabel} numberOfLines={1}>
@@ -319,7 +332,7 @@ function StatCell({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   card: {
     width: CARD_WIDTH,
     backgroundColor: THEME.colors.surface,

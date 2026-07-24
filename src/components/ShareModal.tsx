@@ -2,7 +2,7 @@
  * ShareModal - 分享预览弹窗
  * 展示 ShareCard 预览，支持调起系统分享或保存至相册。
  */
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import ViewShot, { type ViewShotRef } from 'react-native-view-shot';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { BrutalButton } from './BrutalButton';
 import { ShareCard, type ShareCardData } from './ShareCard';
 import { captureAndShareView, captureAndSaveToGallery } from '../utils/share';
@@ -31,6 +32,8 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
   const shotRef = useRef<ViewShotRef>(null);
   const scrollRef = useRef<ScrollView>(null);
   const [busy, setBusy] = useState<Action | null>(null);
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
 
   async function runCapture(action: Action) {
     if (!shotRef.current || busy) return;
@@ -142,7 +145,7 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

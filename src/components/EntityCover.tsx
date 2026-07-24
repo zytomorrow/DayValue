@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Image,
   StyleSheet,
@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 type EntityCoverProps = {
   imageUri?: string | null;
@@ -32,6 +33,8 @@ export function EntityCover({
   imageStyle,
   iconStyle,
 }: EntityCoverProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View
       style={[
@@ -63,7 +66,7 @@ export function EntityCover({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     borderRadius: 6,
     borderWidth: 1.5,

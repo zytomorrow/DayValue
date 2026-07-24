@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface PixelButtonProps {
   title: string;
@@ -28,6 +29,8 @@ export function PixelButton({
   loading = false,
   style,
 }: PixelButtonProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const bgColor: Record<string, string> = {
     primary: THEME.colors.primary,
     accent: THEME.colors.accent,
@@ -35,7 +38,7 @@ export function PixelButton({
     outline: 'transparent',
   };
 
-  const textColor = variant === 'outline' ? THEME.colors.primary : '#FFFFFF';
+  const textColor = variant === 'outline' ? THEME.colors.primary : THEME.colors.onPrimary;
 
   const sizeStyles: Record<string, { pv: number; ph: number; fs: number }> = {
     sm: { pv: 6, ph: 12, fs: THEME.fontSize.sm },
@@ -71,7 +74,7 @@ export function PixelButton({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   base: {
     ...THEME.pixelBorder,
     alignItems: 'center',
