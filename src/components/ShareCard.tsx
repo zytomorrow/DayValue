@@ -32,6 +32,24 @@ export type ShareCardData =
       topStoredCards: ShareItemEntry[];
     }
   | {
+      kind: 'annual';
+      year: number;
+      purchasedCount: number;
+      purchasedTotal: number;
+      soldCount: number;
+      soldProfit: number;
+      soldRevenue: number;
+      subscriptionTotal: number;
+      maintenanceTotal: number;
+      dormantPrincipal: number;
+      dormantCount: number;
+      netWorthDelta: number | null;
+      netWorthFirst: number | null;
+      netWorthLast: number | null;
+      bestAssetName: string | null;
+      bestAssetScore: number | null;
+    }
+  | {
       kind: 'item';
       name: string;
       categoryIcon: string;
@@ -71,6 +89,8 @@ export function ShareCard({ data }: { data: ShareCardData }) {
       <View style={styles.body}>
         {data.kind === 'summary' ? (
           <SummaryBody data={data} />
+        ) : data.kind === 'annual' ? (
+          <AnnualBody data={data} />
         ) : (
           <SingleBody data={data} />
         )}
@@ -190,6 +210,106 @@ function EntryList({
         ))}
       </View>
     </View>
+  );
+}
+
+function AnnualBody({ data }: { data: Extract<ShareCardData, { kind: 'annual' }> }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
+
+  const delta = data.netWorthDelta;
+  const deltaColor =
+    delta === null
+      ? THEME.colors.textSecondary
+      : delta > 0
+        ? THEME.colors.success
+        : delta < 0
+          ? THEME.colors.dangerDark
+          : THEME.colors.textSecondary;
+
+  return (
+    <>
+      <View style={styles.heroBlock}>
+        <Text style={styles.heroLabel}>{data.year} 年度资产回顾</Text>
+        <Text style={styles.heroValue}>{formatCurrency(data.purchasedTotal)}</Text>
+        <Text style={styles.heroSubLabel}>年度购入总额</Text>
+      </View>
+
+      <View style={styles.statsGrid}>
+        <StatCell
+          label="购入资产"
+          value={`${data.purchasedCount} 件`}
+          accent={THEME.colors.primaryDark}
+        />
+        <StatCell
+          label="售出资产"
+          value={`${data.soldCount} 件`}
+          accent={THEME.colors.accent}
+        />
+        <StatCell
+          label="售出净盈亏"
+          value={formatCurrency(data.soldProfit)}
+          accent={THEME.colors.success}
+        />
+        <StatCell
+          label="订阅预算"
+          value={formatCurrency(data.subscriptionTotal)}
+          accent={THEME.colors.primary}
+        />
+        <StatCell
+          label="维修支出"
+          value={formatCurrency(data.maintenanceTotal)}
+          accent={THEME.colors.warning}
+        />
+        <StatCell
+          label="沉睡本金"
+          value={formatCurrency(data.dormantPrincipal)}
+          accent={THEME.colors.dangerDark}
+        />
+      </View>
+
+      {delta !== null && (data.netWorthFirst !== null || data.netWorthLast !== null) && (
+        <View style={styles.annualNetWorthRow}>
+          <View style={styles.annualNetWorthBlock}>
+            <Text style={styles.annualNetWorthLabel}>年初净资产</Text>
+            <Text style={styles.annualNetWorthValue}>
+              {data.netWorthFirst !== null ? formatCurrency(data.netWorthFirst) : '—'}
+            </Text>
+          </View>
+          <Text style={styles.annualNetWorthArrow}>→</Text>
+          <View style={styles.annualNetWorthBlock}>
+            <Text style={styles.annualNetWorthLabel}>年末净资产</Text>
+            <Text style={styles.annualNetWorthValue}>
+              {data.netWorthLast !== null ? formatCurrency(data.netWorthLast) : '—'}
+            </Text>
+          </View>
+          <View style={styles.annualNetWorthDivider} />
+          <View style={styles.annualNetWorthBlock}>
+            <Text style={styles.annualNetWorthLabel}>年度变化</Text>
+            <Text style={[styles.annualNetWorthValue, { color: deltaColor }]}>
+              {delta > 0 ? '+' : ''}
+              {formatCurrency(delta)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {data.bestAssetName && data.bestAssetScore !== null && (
+        <View style={styles.annualBestAssetRow}>
+          <Text style={styles.annualBestAssetIcon}>👑</Text>
+          <View style={styles.annualBestAssetMeta}>
+            <Text style={styles.annualBestAssetLabel} numberOfLines={1}>
+              年度最佳资产
+            </Text>
+            <Text style={styles.annualBestAssetName} numberOfLines={1}>
+              {data.bestAssetName}
+            </Text>
+          </View>
+          <Text style={styles.annualBestAssetScore}>{data.bestAssetScore}</Text>
+          <Text style={styles.annualBestAssetUnit}>分</Text>
+        </View>
+      )}
+    </>
   );
 }
 
@@ -383,10 +503,93 @@ const createStyles = () => StyleSheet.create({
     color: THEME.colors.primaryDark,
     letterSpacing: 1,
   },
+  heroSubLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    marginTop: 4,
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  annualNetWorthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: THEME.borderRadius,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  annualNetWorthBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  annualNetWorthLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    marginBottom: 2,
+  },
+  annualNetWorthValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  annualNetWorthArrow: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: THEME.colors.textLight,
+  },
+  annualNetWorthDivider: {
+    width: 1.5,
+    alignSelf: 'stretch',
+    backgroundColor: THEME.colors.border,
+    marginHorizontal: 2,
+  },
+  annualBestAssetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: THEME.borderRadius,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  annualBestAssetIcon: {
+    fontSize: 22,
+  },
+  annualBestAssetMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  annualBestAssetLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    marginBottom: 2,
+  },
+  annualBestAssetName: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  annualBestAssetScore: {
+    fontFamily: THEME.fontFamily.pixel,
+    fontSize: 18,
+    color: THEME.colors.primaryDark,
+    letterSpacing: 1,
+  },
+  annualBestAssetUnit: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: THEME.colors.textSecondary,
   },
   statCell: {
     flexGrow: 1,

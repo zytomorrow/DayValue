@@ -20,35 +20,27 @@ import { alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;
 
-const GITHUB_REPO_URL = 'https://github.com/ther7777/DayValue';
-const GITHUB_ISSUES_URL = 'https://github.com/ther7777/DayValue/issues';
+const GITHUB_REPO_URL = 'https://github.com/zytomorrow/DayValue';
+const GITHUB_ISSUES_URL = 'https://github.com/zytomorrow/DayValue/issues';
+const ORIGINAL_REPO_URL = 'https://github.com/ther7777/DayValue';
 const LICENSE_URL = 'https://www.gnu.org/licenses/agpl-3.0.html';
 
 /** 更新日志（最近版本） */
 const CHANGELOG: Array<{ version: string; date: string; notes: string[] }> = [
   {
-    version: '1.1.0',
-    date: '2026-07',
-    notes: [
-      '新增：维修 / 保养记录与真实持有成本汇总',
-      '新增：资产健康度评分（服役 / 保修 / 状态三维）',
-      '新增：净资产历史快照与趋势追踪',
-      '新增：月度支出趋势（购置/分期/订阅/维修）',
-      '新增：订阅续费提醒与年度预算投影',
-      '新增：保修状态筛选与到期提醒',
-      '新增：资产备注、购买渠道、序列号字段',
-      '新增：数字陈列柜搜索与分类筛选',
-      '新增：独立「关于」页与开源协议展示',
-    ],
-  },
-  {
     version: '1.0.6',
-    date: '2026-06',
+    date: '2026-07',
     notes: [
       '基础功能：买断资产 / 每日消耗 / 沉睡卡包',
       '支持分期 IRR 计算与影子日供',
       '支持像素风分享卡片导出',
       '支持 WebDAV 云备份与本地备份恢复',
+      '新增：维修 / 保养记录与真实持有成本汇总',
+      '新增：资产健康度评分（服役 / 保修 / 状态三维）',
+      '新增：净资产历史快照与趋势追踪',
+      '新增：年度资产回顾与资产生命周期日历',
+      '新增：配件管理（支持资产 / 订阅 / 卡包）',
+      '新增：本地推送提醒与多语言支持',
     ],
   },
 ];
@@ -132,6 +124,9 @@ export function AboutScreen({}: Props) {
           <Text style={styles.paragraph}>
             所有数据仅保存在本机 SQLite 数据库中，不上传任何服务器；可随时通过 WebDAV 或本地文件备份/恢复。
           </Text>
+          <Text style={styles.paragraph}>
+            本版本基于原作者 @ther7777 的 DayValue 进行二次开发与功能增强，在此向原作者致敬。
+          </Text>
         </SectionCard>
 
         <SectionCard title={t('about.changelog')} accentColor={THEME.colors.accent}>
@@ -165,7 +160,7 @@ export function AboutScreen({}: Props) {
             <Text style={styles.linkIcon}>📦</Text>
             <View style={styles.linkInfo}>
               <Text style={styles.linkTitle}>GitHub 仓库</Text>
-              <Text style={styles.linkUrl} numberOfLines={1}>github.com/ther7777/DayValue</Text>
+              <Text style={styles.linkUrl} numberOfLines={1}>github.com/zytomorrow/DayValue</Text>
             </View>
             <Text style={styles.linkChevron}>›</Text>
           </TouchableOpacity>
@@ -191,7 +186,21 @@ export function AboutScreen({}: Props) {
             <Text style={styles.linkIcon}>🐛</Text>
             <View style={styles.linkInfo}>
               <Text style={styles.linkTitle}>反馈 / 提交 Bug</Text>
-              <Text style={styles.linkUrl} numberOfLines={1}>GitHub Issues</Text>
+              <Text style={styles.linkUrl} numberOfLines={1}>github.com/zytomorrow/DayValue/issues</Text>
+            </View>
+            <Text style={styles.linkChevron}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.linkRow}
+            onPress={() =>
+              openUrl(ORIGINAL_REPO_URL, '无法打开', '请手动访问原作者仓库：')
+            }
+            activeOpacity={0.7}
+          >
+            <Text style={styles.linkIcon}>🌱</Text>
+            <View style={styles.linkInfo}>
+              <Text style={styles.linkTitle}>原作者仓库</Text>
+              <Text style={styles.linkUrl} numberOfLines={1}>github.com/ther7777/DayValue</Text>
             </View>
             <Text style={styles.linkChevron}>›</Text>
           </TouchableOpacity>

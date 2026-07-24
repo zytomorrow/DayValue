@@ -43,7 +43,6 @@ import {
   calculateRealizedProfit,
   calculateServiceProgress,
   calculateStoredPrincipal,
-  calculateSubscriptionDailyCost,
 } from '../utils/calculations';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 import {
@@ -55,23 +54,75 @@ import {
   ShareModal,
 } from '../components';
 import type { ShareCardData } from '../components';
-import type { ShareItemEntry } from '../components/ShareCard';
 import { alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AnnualReport'>;
-
-/** 年份选择下限 */
-const MIN_YEAR = 2020;
 
 /** 取当前年份 */
 function getCurrentYear(): number {
   return new Date().getFullYear();
 }
 
+/** 从 YYYY-MM-DD 中取年份；无效返回 null */
+function yearOfDate(dateString: string | null | undefined): number | null {
+  if (!dateString) return null;
+  const y = Number(dateString.slice(0, 4));
+  return Number.isFinite(y) ? y : null;
+}
+
 /** 判断日期字符串是否属于指定年份 */
 function isDateInYear(dateString: string | null | undefined, year: number): boolean {
   if (!dateString) return false;
   return dateString.startsWith(`${year}-`);
+}
+
+/**
+ * 计算资产截至「选中年份年末」的激活天数。
+ * - 选中年是过去年份时，截止到该年 12-31；选中年是当前年/未来年时，截止到今天。
+ * - 若资产在截止日之后才购入，返回 0。
+ * - archived（售出）资产：若售出发生在截止日之后，按购入→截止日计算。
+ */
+function calculateActiveDaysUpToYear(
+  item: Pick<OneTimeItem, 'status' | 'buy_date' | 'end_date' | 'active_days' | 'active_start_date'>,
+  year: number,
+): number {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const referenceEnd =
+    year < currentYear
+      ? new Date(year, 11, 31)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const startDateStr = item.active_start_date || item.buy_date;
+  if (!startDateStr) return 0;
+  const start = new Date(
+    Number(startDateStr.slice(0, 4)),
+    Number(startDateStr.slice(5, 7)) - 1,
+    Number(startDateStr.slice(8, 10)),
+  );
+  start.setHours(0, 0, 0, 0);
+  referenceEnd.setHours(0, 0, 0, 0);
+
+  // 购入日晚于截止日：该年尚未持有
+  if (start > referenceEnd) return 0;
+
+  const endStr =
+    item.status === 'archived' && item.end_date
+      ? (() => {
+          const end = new Date(
+            Number(item.end_date!.slice(0, 4)),
+            Number(item.end_date!.slice(5, 7)) - 1,
+            Number(item.end_date!.slice(8, 10)),
+          );
+          end.setHours(0, 0, 0, 0);
+          // 售出发生在截止日之后 → 截断到截止日
+          return end > referenceEnd ? referenceEnd : end;
+        })()
+      : referenceEnd;
+
+  const diffDays =
+    Math.floor((endStr.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.max(diffDays, 1);
 }
 
 export function AnnualReportScreen({ route, navigation }: Props) {
@@ -82,7 +133,7 @@ export function AnnualReportScreen({ route, navigation }: Props) {
   // 年份默认取路由参数，否则取当前年份
   const initialYear = route.params?.year ?? getCurrentYear();
   const [year, setYear] = useState<number>(initialYear);
-  const maxYear = getCurrentYear() + 1;
+  const maxYear = getCurrentYear();
 
   const [items, setItems] = useState<OneTimeItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -90,6 +141,25 @@ export function AnnualReportScreen({ route, navigation }: Props) {
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
   const [snapshots, setSnapshots] = useState<NetWorthSnapshot[]>([]);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
+
+  // 年份下限：取所有资产/订阅/卡包最早记录年份；无记录时回退到当前年
+  const minYear = useMemo(() => {
+    const candidates: number[] = [];
+    for (const item of items) {
+      const y = yearOfDate(item.buy_date);
+      if (y !== null) candidates.push(y);
+    }
+    for (const sub of subscriptions) {
+      const y = yearOfDate(sub.start_date);
+      if (y !== null) candidates.push(y);
+    }
+    for (const card of storedCards) {
+      const y = yearOfDate(card.last_updated_date);
+      if (y !== null) candidates.push(y);
+    }
+    if (candidates.length === 0) return getCurrentYear();
+    return Math.min(...candidates);
+  }, [items, subscriptions, storedCards]);
 
   // 加载所有原始数据（按年份筛选放在 useMemo 里做）
   const load = useCallback(async () => {
@@ -135,19 +205,19 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     return { purchased, count, totalAmount, topPurchased };
   }, [items, year]);
 
-  // ===================== 2. 年度回本资产 TOP3（日均成本最低的在用资产） =====================
+  // ===================== 2. 年度回本资产 TOP3（按选中年份计算激活天数与日均成本） =====================
   const topRecoveredAssets = useMemo(() => {
     return items
-      .filter(item => item.status === 'active')
+      .filter(item => item.status === 'active' || (item.status === 'archived' && item.archived_reason === 'sold'))
       .map(item => {
-        const activeDays = calculateOneTimeItemActiveDays(item);
+        const activeDays = calculateActiveDaysUpToYear(item, year);
         const dailyCost = calculateDailyCost(item.total_price, 0, activeDays);
         return { item, activeDays, dailyCost };
       })
       .filter(entry => entry.activeDays > 0)
       .sort((a, b) => a.dailyCost - b.dailyCost)
       .slice(0, 3);
-  }, [items]);
+  }, [items, year]);
 
   // ===================== 3. 年度售出资产（end_date 在该年份的已售出资产） =====================
   const soldSummary = useMemo(() => {
@@ -298,83 +368,53 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     [items, storedCards],
   );
 
-  // ===================== 分享卡片数据构建 =====================
+  // ===================== 分享卡片数据构建（反映本界面年度回顾内容） =====================
   const handleShare = useCallback(() => {
-    if (purchasedSummary.count === 0 && soldSummary.count === 0 && subscriptionSummary.activeCount === 0) {
+    if (
+      purchasedSummary.count === 0 &&
+      soldSummary.count === 0 &&
+      subscriptionSummary.activeCount === 0 &&
+      maintenanceSummary.logCount === 0 &&
+      dormantCardSummary.activeCount === 0
+    ) {
       alertError('暂无可分享数据', '该年份没有任何资产活动，无法生成年度报告卡片。');
       return;
     }
 
-    // 年度支出折算日均
-    const yearlyTotalSpending =
-      purchasedSummary.totalAmount +
-      subscriptionSummary.grandTotal +
-      maintenanceSummary.totalCost;
-    const avgDailyCost = yearlyTotalSpending / 365;
-
-    const topAssets: ShareItemEntry[] = topRecoveredAssets.map(entry => ({
-      name: entry.item.name,
-      icon: entry.item.icon ?? '📦',
-      imageUri: entry.item.image_uri,
-      dailyCost: entry.dailyCost,
-      extra: `${entry.activeDays} 天`,
-    }));
-
-    const topSubscriptions: ShareItemEntry[] = subscriptions
-      .filter(sub => sub.status === 'active')
-      .map(sub => {
-        const dailyCost = calculateSubscriptionDailyCost(sub.cycle_price, sub.billing_cycle);
-        return { sub, dailyCost };
-      })
-      .sort((a, b) => b.dailyCost - a.dailyCost)
-      .slice(0, 3)
-      .map(({ sub, dailyCost }) => ({
-        name: sub.name,
-        icon: sub.icon ?? '💿',
-        imageUri: sub.image_uri,
-        dailyCost,
-        extra: sub.billing_cycle === 'monthly' ? '月付' : sub.billing_cycle === 'quarterly' ? '季付' : '年付',
-      }));
-
-    const topStoredCards: ShareItemEntry[] = dormantCardSummary.rows
-      .slice(0, 3)
-      .map(row => ({
-        name: row.card.name,
-        icon: row.card.icon ?? '💳',
-        imageUri: row.card.image_uri,
-        dailyCost: row.principal,
-        extra: '剩余本金',
-      }));
-
     const shareCardData: ShareCardData = {
-      kind: 'summary',
-      assetDailyCost: avgDailyCost,
-      assetCount: purchasedSummary.count,
-      realizedProfit: soldSummary.totalProfit,
-      subscriptionDailyCost: subscriptionSummary.grandTotal / 365,
-      installmentDailyDebt: currentNetWorth.installmentDebt / 30,
-      storedPrincipal: dormantCardSummary.totalPrincipal,
-      storedCardCount: dormantCardSummary.activeCount,
-      topAssets,
-      topSubscriptions,
-      topStoredCards,
+      kind: 'annual',
+      year,
+      purchasedCount: purchasedSummary.count,
+      purchasedTotal: purchasedSummary.totalAmount,
+      soldCount: soldSummary.count,
+      soldProfit: soldSummary.totalProfit,
+      soldRevenue: soldSummary.totalRevenue,
+      subscriptionTotal: subscriptionSummary.grandTotal,
+      maintenanceTotal: maintenanceSummary.totalCost,
+      dormantPrincipal: dormantCardSummary.totalPrincipal,
+      dormantCount: dormantCardSummary.activeCount,
+      netWorthDelta: netWorthTrend.rows.length > 0 ? netWorthTrend.delta : null,
+      netWorthFirst: netWorthTrend.first ? netWorthTrend.first.net_value : null,
+      netWorthLast: netWorthTrend.last ? netWorthTrend.last.net_value : null,
+      bestAssetName: bestAsset ? bestAsset.item.name : null,
+      bestAssetScore: bestAsset ? bestAsset.health.score : null,
     };
     setShareData(shareCardData);
   }, [
+    year,
     purchasedSummary,
     soldSummary,
     subscriptionSummary,
     maintenanceSummary,
-    topRecoveredAssets,
-    subscriptions,
     dormantCardSummary,
-    currentNetWorth,
+    netWorthTrend,
+    bestAsset,
   ]);
 
   // 年份切换
   const handlePrevYear = useCallback(() => {
-    setYear(prev => (prev > MIN_YEAR ? prev - 1 : prev));
-  }, []);
+    setYear(prev => (prev > minYear ? prev - 1 : prev));
+  }, [minYear]);
   const handleNextYear = useCallback(() => {
     setYear(prev => (prev < maxYear ? prev + 1 : prev));
   }, [maxYear]);
@@ -394,9 +434,9 @@ export function AnnualReportScreen({ route, navigation }: Props) {
           <Text style={styles.yearPickerTitle}>📅 年度资产回顾</Text>
           <View style={styles.yearPickerRow}>
             <TouchableOpacity
-              style={[styles.yearArrowBtn, year <= MIN_YEAR && styles.yearArrowBtnDisabled]}
+              style={[styles.yearArrowBtn, year <= minYear && styles.yearArrowBtnDisabled]}
               onPress={handlePrevYear}
-              disabled={year <= MIN_YEAR}
+              disabled={year <= minYear}
               activeOpacity={0.7}
             >
               <Text style={styles.yearArrowText}>◀</Text>
@@ -415,7 +455,7 @@ export function AnnualReportScreen({ route, navigation }: Props) {
             </TouchableOpacity>
           </View>
           <Text style={styles.yearRangeHint}>
-            可选范围 {MIN_YEAR} ~ {maxYear}
+            可选范围 {minYear} ~ {maxYear}
           </Text>
         </View>
 

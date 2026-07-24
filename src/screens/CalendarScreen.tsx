@@ -42,7 +42,7 @@ import { useTheme } from '../contexts/ThemeContext';
 type Props = NativeStackScreenProps<RootStackParamList, 'Calendar'>;
 
 /** 事件类型 */
-type CalendarEventType = 'warranty' | 'subscription' | 'maintenance' | 'stored_card';
+type CalendarEventType = 'purchase' | 'warranty' | 'subscription' | 'maintenance' | 'stored_card';
 
 interface CalendarEvent {
   type: CalendarEventType;
@@ -57,6 +57,7 @@ interface CalendarEvent {
 const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 
 const EVENT_META: Record<CalendarEventType, { emoji: string; color: string; label: string }> = {
+  purchase: { emoji: '🛒', color: THEME.colors.success, label: '购入' },
   warranty: { emoji: '🔧', color: THEME.colors.danger, label: '保修到期' },
   subscription: { emoji: '🔁', color: THEME.colors.accent, label: '订阅续费' },
   maintenance: { emoji: '🛠️', color: THEME.colors.warning, label: '保养到期' },
@@ -123,6 +124,21 @@ function buildMonthEvents(params: {
   const { items, subscriptions, storedCards, maintenancePlans, year, month } = params;
   const events: CalendarEvent[] = [];
 
+  // 资产购入日
+  for (const item of items) {
+    if (!item.buy_date) continue;
+    const buy = parseISODate(item.buy_date);
+    if (buy.getFullYear() !== year || buy.getMonth() + 1 !== month) continue;
+    events.push({
+      type: 'purchase',
+      date: item.buy_date,
+      title: item.name,
+      subtitle: `购入 · ${formatCurrency(item.total_price)}`,
+      entityId: item.id,
+      entityType: 'item',
+    });
+  }
+
   // 保修到期日
   for (const item of items) {
     if (item.status === 'archived') continue;
@@ -188,7 +204,7 @@ function buildMonthEvents(params: {
   return events;
 }
 
-/** 构造月历网格单元格序列（含月初补齐的空位）。 */
+/** 构造月历网格单元格序列（固定 6 行 = 42 格，避免月切换时高度抖动）。 */
 function buildCalendarCells(year: number, month: number): Array<number | null> {
   const firstDay = new Date(year, month - 1, 1);
   // 周一开头：把 JS 的周日(0)~周六(6) 映射到 周一(0)~周日(6)
@@ -202,8 +218,8 @@ function buildCalendarCells(year: number, month: number): Array<number | null> {
   for (let day = 1; day <= daysInMonth; day += 1) {
     cells.push(day);
   }
-  // 末尾补齐到 7 的倍数（最多 6 行）
-  while (cells.length % 7 !== 0) {
+  // 末尾补齐到固定 6 行（42 格），保证月历高度恒定
+  while (cells.length < 42) {
     cells.push(null);
   }
   return cells;
@@ -300,7 +316,34 @@ export function CalendarScreen({ navigation }: Props) {
     return viewYear === today.getFullYear() && viewMonth === today.getMonth() + 1;
   }, [viewYear, viewMonth, today]);
 
+  // 时间范围限制：下限 = 最早一条记录所在月份，上限 = 当前月
+  const minYearMonth = useMemo(() => {
+    const candidates: number[] = [];
+    const consider = (dateStr: string | null | undefined) => {
+      if (!dateStr) return;
+      const d = parseISODate(dateStr);
+      if (Number.isNaN(d.getTime())) return;
+      candidates.push(d.getFullYear() * 12 + d.getMonth());
+    };
+    for (const item of items) {
+      consider(item.buy_date);
+      consider(item.warranty_expiry_date);
+    }
+    for (const sub of subscriptions) consider(sub.start_date);
+    for (const card of storedCards) consider(card.last_updated_date);
+    for (const plan of maintenancePlans) consider(plan.next_due_date);
+    const maxYearMonth = today.getFullYear() * 12 + today.getMonth();
+    if (candidates.length === 0) return maxYearMonth;
+    return Math.min(...candidates, maxYearMonth);
+  }, [items, subscriptions, storedCards, maintenancePlans, today]);
+
+  const maxYearMonth = today.getFullYear() * 12 + today.getMonth();
+  const currentYearMonth = viewYear * 12 + (viewMonth - 1);
+  const canGoPrev = currentYearMonth > minYearMonth;
+  const canGoNext = currentYearMonth < maxYearMonth;
+
   const goToPrevMonth = useCallback(() => {
+    if (!canGoPrev) return;
     setViewMonth(prev => {
       if (prev === 1) {
         setViewYear(y => y - 1);
@@ -309,9 +352,10 @@ export function CalendarScreen({ navigation }: Props) {
       return prev - 1;
     });
     setSelectedDay(null);
-  }, []);
+  }, [canGoPrev]);
 
   const goToNextMonth = useCallback(() => {
+    if (!canGoNext) return;
     setViewMonth(prev => {
       if (prev === 12) {
         setViewYear(y => y + 1);
@@ -320,7 +364,7 @@ export function CalendarScreen({ navigation }: Props) {
       return prev + 1;
     });
     setSelectedDay(null);
-  }, []);
+  }, [canGoNext]);
 
   const goToToday = useCallback(() => {
     const now = new Date();
@@ -375,11 +419,12 @@ export function CalendarScreen({ navigation }: Props) {
         {/* 月份切换器 */}
         <View style={styles.monthSwitcher}>
           <TouchableOpacity
-            style={styles.monthNavButton}
+            style={[styles.monthNavButton, !canGoPrev && styles.monthNavButtonDisabled]}
             onPress={goToPrevMonth}
+            disabled={!canGoPrev}
             activeOpacity={0.7}
           >
-            <Text style={styles.monthNavIcon}>‹</Text>
+            <Text style={[styles.monthNavIcon, !canGoPrev && styles.monthNavIconDisabled]}>‹</Text>
           </TouchableOpacity>
           <View style={styles.monthLabelBox}>
             <Text style={styles.monthLabelText}>{monthLabel}</Text>
@@ -388,11 +433,12 @@ export function CalendarScreen({ navigation }: Props) {
             </Text>
           </View>
           <TouchableOpacity
-            style={styles.monthNavButton}
+            style={[styles.monthNavButton, !canGoNext && styles.monthNavButtonDisabled]}
             onPress={goToNextMonth}
+            disabled={!canGoNext}
             activeOpacity={0.7}
           >
-            <Text style={styles.monthNavIcon}>›</Text>
+            <Text style={[styles.monthNavIcon, !canGoNext && styles.monthNavIconDisabled]}>›</Text>
           </TouchableOpacity>
         </View>
 
@@ -599,6 +645,13 @@ const createStyles = () => StyleSheet.create({
     color: THEME.colors.primary,
     lineHeight: 26,
   },
+  monthNavButtonDisabled: {
+    backgroundColor: THEME.colors.surfaceMuted,
+    borderColor: THEME.colors.border,
+  },
+  monthNavIconDisabled: {
+    color: THEME.colors.textLight,
+  },
   monthLabelBox: {
     flex: 1,
     alignItems: 'center',
@@ -633,28 +686,28 @@ const createStyles = () => StyleSheet.create({
   legendRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: THEME.spacing.sm,
-    marginBottom: THEME.spacing.md,
+    gap: 4,
+    marginBottom: THEME.spacing.sm,
     justifyContent: 'center',
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: THEME.spacing.sm,
-    paddingVertical: 3,
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
     backgroundColor: THEME.colors.surface,
-    borderRadius: 4,
+    borderRadius: 3,
     borderWidth: 1,
     borderColor: THEME.colors.border,
   },
   legendDot: {
-    width: 8,
-    height: 8,
+    width: 6,
+    height: 6,
     borderRadius: 2,
   },
   legendText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: THEME.colors.textSecondary,
   },

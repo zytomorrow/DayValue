@@ -43,8 +43,8 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
-const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/ther7777/DayValue/releases/latest';
-const GITHUB_RELEASES_PAGE_URL = 'https://github.com/ther7777/DayValue/releases';
+const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/zytomorrow/DayValue/releases/latest';
+const GITHUB_RELEASES_PAGE_URL = 'https://github.com/zytomorrow/DayValue/releases';
 const APP_NAME = 'DayValue';
 
 type GitHubReleaseResponse = {

@@ -45,6 +45,9 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
     if (!shotRef.current || busy) return;
     // 截图前回到顶部，确保整张卡片内容已完整渲染。
     scrollRef.current?.scrollTo({ y: 0, animated: false });
+    // 等待滚动完成后的重新渲染，避免截到滚动中间状态或阻塞手势
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    await new Promise<void>(resolve => setTimeout(resolve, 120));
     setBusy(action);
     try {
       if (action === 'share') {
@@ -66,9 +69,11 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
   const title =
     data?.kind === 'summary'
       ? '分享资产总览'
-      : data?.kind === 'item'
-        ? '分享资产卡片'
-        : '分享订阅卡片';
+      : data?.kind === 'annual'
+        ? '分享年度报告'
+        : data?.kind === 'item'
+          ? '分享资产卡片'
+          : '分享订阅卡片';
 
   const isBusy = busy !== null;
 
