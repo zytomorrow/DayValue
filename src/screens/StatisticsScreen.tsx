@@ -295,10 +295,218 @@ export function StatisticsScreen({}: Props) {
     };
   }, [items, resolveItemCategory]);
 
+  /** 折旧 vs 维修成本对比：评估维修投入是否已超过资产折旧损失 */
+  const maintenanceVsDepreciation = useMemo(() => {
+    // 仅统计在用 + 停用（非售出）资产的维修记录
+    const validItemIds = new Set(
+      items
+        .filter(item => {
+          if (item.status === 'unredeemed') return false;
+          const archivedReason =
+            item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+          return !(item.status === 'archived' && archivedReason === 'sold');
+        })
+        .map(item => item.id),
+    );
+
+    const totalMaintenance = maintenanceLogs
+      .filter(log => validItemIds.has(log.item_id))
+      .reduce((sum, log) => sum + log.cost, 0);
+
+    const totalDepreciationLoss = depreciationSummary.totalDepreciationLoss;
+    const totalDepreciated = depreciationSummary.totalDepreciated;
+
+    // 维修占当前现值的比例：超过阈值意味着「修不如换」
+    const maintenanceToValueRatio =
+      totalDepreciated > 0 ? (totalMaintenance / totalDepreciated) * 100 : 0;
+
+    // 维修 / 折旧损失比：> 100% 表示维修投入已超过价值衰减
+    const maintenanceToDepreciationRatio =
+      totalDepreciationLoss > 0 ? (totalMaintenance / totalDepreciationLoss) * 100 : 0;
+
+    const higher =
+      totalMaintenance > totalDepreciationLoss
+        ? 'maintenance'
+        : totalDepreciationLoss > totalMaintenance
+          ? 'depreciation'
+          : 'equal';
+
+    // 每个资产的维修成本 TOP 5（找出「维修黑洞」）
+    const perItemMaintenance = new Map<number, number>();
+    for (const log of maintenanceLogs) {
+      if (!validItemIds.has(log.item_id)) continue;
+      perItemMaintenance.set(
+        log.item_id,
+        (perItemMaintenance.get(log.item_id) ?? 0) + log.cost,
+      );
+    }
+    const moneyPits = items
+      .map(item => {
+        const maintenance = perItemMaintenance.get(item.id) ?? 0;
+        if (maintenance <= 0) return null;
+        const activeDays = calculateOneTimeItemActiveDays(item);
+        const depValue = calculateDepreciatedValue(item, activeDays);
+        const loss = item.total_price - depValue;
+        // 维修占现值比，超过 50% 视为建议更换
+        const ratio = depValue > 0 ? (maintenance / depValue) * 100 : 0;
+        const recommendReplace = ratio >= 50 || maintenance > loss;
+        return {
+          item,
+          maintenance,
+          depreciatedValue: depValue,
+          depreciationLoss: loss,
+          ratio,
+          recommendReplace,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+      .sort((a, b) => b.maintenance - a.maintenance)
+      .slice(0, 5);
+
+    return {
+      totalMaintenance,
+      totalDepreciationLoss,
+      totalDepreciated,
+      maintenanceToValueRatio,
+      maintenanceToDepreciationRatio,
+      higher,
+      moneyPits,
+      maintenanceLogCount: maintenanceLogs.filter(log => validItemIds.has(log.item_id)).length,
+    };
+  }, [items, maintenanceLogs, depreciationSummary]);
+
   const totalAssets = useMemo(
     () => assetSeries.reduce((sum, item) => sum + item.value, 0),
     [assetSeries],
   );
+
+  /** 资产老化分布：按购买年份分组，识别老化资产 */
+  const assetAgeDistribution = useMemo(() => {
+    type AgeRow = { year: number; count: number; value: number; oldestDays: number };
+    const map = new Map<number, AgeRow>();
+    const today = new Date();
+
+    for (const item of items) {
+      if (item.status === 'unredeemed') continue;
+      // 已售出资产已离手，不计入当前持有资产的老化分析
+      const archivedReason =
+        item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+      if (item.status === 'archived' && archivedReason === 'sold') continue;
+
+      const buyDate = new Date(item.buy_date);
+      const year = buyDate.getFullYear();
+      const ageDays = Math.floor(
+        (today.getTime() - buyDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      const existing = map.get(year);
+      if (existing) {
+        existing.count += 1;
+        existing.value += item.total_price;
+        existing.oldestDays = Math.max(existing.oldestDays, ageDays);
+      } else {
+        map.set(year, { year, count: 1, value: item.total_price, oldestDays: ageDays });
+      }
+    }
+
+    const rows = Array.from(map.values()).sort((a, b) => a.year - b.year);
+    const totalValue = rows.reduce((s, r) => s + r.value, 0);
+    const totalCount = rows.reduce((s, r) => s + r.count, 0);
+    const avgAgeDays =
+      totalCount > 0
+        ? Math.round(
+            items
+              .filter(item => {
+                if (item.status === 'unredeemed') return false;
+                const archivedReason =
+                  item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+                return !(item.status === 'archived' && archivedReason === 'sold');
+              })
+              .reduce((sum, item) => {
+                const buyDate = new Date(item.buy_date);
+                return sum + Math.floor((today.getTime() - buyDate.getTime()) / (1000 * 60 * 60 * 24));
+              }, 0) / totalCount,
+          )
+        : 0;
+
+    // 老化资产：购买超过 3 年（1095 天）
+    const agingThresholdDays = 365 * 3;
+    const agingAssets = items.filter(item => {
+      if (item.status === 'unredeemed') return false;
+      const archivedReason =
+        item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+      if (item.status === 'archived' && archivedReason === 'sold') return false;
+      const buyDate = new Date(item.buy_date);
+      const ageDays = Math.floor(
+        (today.getTime() - buyDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      return ageDays >= agingThresholdDays;
+    });
+
+    return {
+      rows,
+      totalValue,
+      totalCount,
+      avgAgeDays,
+      agingAssets,
+      maxCount: rows.reduce((m, r) => Math.max(m, r.count), 0),
+    };
+  }, [items]);
+
+  /** 资产集中度：基于在用资产的总价计算 CR3/CR5 与 HHI 指数 */
+  const concentrationIndex = useMemo(() => {
+    const activeItems = items.filter(item => item.status === 'active');
+    if (activeItems.length === 0) {
+      return {
+        totalValue: 0,
+        top3Ratio: 0,
+        top5Ratio: 0,
+        hhi: 0,
+        concentration: 'none' as 'none' | 'low' | 'medium' | 'high',
+        topAssets: [] as Array<{ id: number; name: string; value: number; share: number }>,
+      };
+    }
+
+    const sorted = [...activeItems].sort((a, b) => b.total_price - a.total_price);
+    const totalValue = sorted.reduce((s, i) => s + i.total_price, 0);
+    if (totalValue <= 0) {
+      return {
+        totalValue: 0,
+        top3Ratio: 0,
+        top5Ratio: 0,
+        hhi: 0,
+        concentration: 'none' as 'none' | 'low' | 'medium' | 'high',
+        topAssets: [] as Array<{ id: number; name: string; value: number; share: number }>,
+      };
+    }
+
+    const top3 = sorted.slice(0, 3).reduce((s, i) => s + i.total_price, 0);
+    const top5 = sorted.slice(0, 5).reduce((s, i) => s + i.total_price, 0);
+    const top3Ratio = (top3 / totalValue) * 100;
+    const top5Ratio = (top5 / totalValue) * 100;
+
+    // HHI = Σ (share%)²，0~10000。0=完全分散，10000=完全垄断
+    let hhi = 0;
+    for (const item of sorted) {
+      const share = (item.total_price / totalValue) * 100;
+      hhi += share * share;
+    }
+
+    let concentration: 'none' | 'low' | 'medium' | 'high';
+    if (hhi >= 2500) concentration = 'high';
+    else if (hhi >= 1500) concentration = 'medium';
+    else if (hhi >= 800) concentration = 'low';
+    else concentration = 'none';
+
+    const topAssets = sorted.slice(0, 5).map(item => ({
+      id: item.id,
+      name: item.name,
+      value: item.total_price,
+      share: (item.total_price / totalValue) * 100,
+    }));
+
+    return { totalValue, top3Ratio, top5Ratio, hhi, concentration, topAssets };
+  }, [items]);
   const totalDaily = useMemo(
     () => dailySeries.reduce((sum, item) => sum + item.value, 0),
     [dailySeries],
@@ -663,6 +871,348 @@ export function StatisticsScreen({}: Props) {
                   );
                 })}
               </View>
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>折旧 vs 维修 · 成本天平</Text>
+          <Text style={styles.subTitle}>
+            维修 {maintenanceVsDepreciation.maintenanceLogCount} 笔 · 现值 {formatCurrency(maintenanceVsDepreciation.totalDepreciated)}
+          </Text>
+          {maintenanceVsDepreciation.totalMaintenance === 0 &&
+          maintenanceVsDepreciation.totalDepreciationLoss === 0 ? (
+            <EmptyState message="暂无可对比的数据，添加维修记录并设置资产预期寿命后可见。" icon="⚖️" />
+          ) : (
+            <>
+              <View style={styles.balanceRow}>
+                <View
+                  style={[
+                    styles.balanceBlock,
+                    maintenanceVsDepreciation.higher === 'maintenance' &&
+                      styles.balanceBlockWinner,
+                  ]}
+                >
+                  <Text style={styles.balanceLabel}>🔧 累计维修</Text>
+                  <Text
+                    style={[
+                      styles.balanceValue,
+                      { color: THEME.colors.warning },
+                    ]}
+                  >
+                    {formatCurrency(maintenanceVsDepreciation.totalMaintenance)}
+                  </Text>
+                </View>
+                <View style={styles.balanceVersus}>
+                  <Text style={styles.balanceVersusText}>VS</Text>
+                  <Text
+                    style={[
+                      styles.balanceArrow,
+                      {
+                        color:
+                          maintenanceVsDepreciation.higher === 'maintenance'
+                            ? THEME.colors.warning
+                            : maintenanceVsDepreciation.higher === 'depreciation'
+                              ? THEME.colors.dangerDark
+                              : THEME.colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {maintenanceVsDepreciation.higher === 'maintenance'
+                      ? '◀'
+                      : maintenanceVsDepreciation.higher === 'depreciation'
+                        ? '▶'
+                        : '='}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.balanceBlock,
+                    maintenanceVsDepreciation.higher === 'depreciation' &&
+                      styles.balanceBlockWinner,
+                  ]}
+                >
+                  <Text style={styles.balanceLabel}>📉 累计折旧</Text>
+                  <Text
+                    style={[
+                      styles.balanceValue,
+                      { color: THEME.colors.dangerDark },
+                    ]}
+                  >
+                    -{formatCurrency(maintenanceVsDepreciation.totalDepreciationLoss)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 维修 / 折旧损失比 进度条 */}
+              <View style={styles.ratioBarWrap}>
+                <View style={styles.ratioBarHeader}>
+                  <Text style={styles.ratioBarLabel}>维修 / 折旧损失</Text>
+                  <Text
+                    style={[
+                      styles.ratioBarValue,
+                      {
+                        color:
+                          maintenanceVsDepreciation.maintenanceToDepreciationRatio >= 100
+                            ? THEME.colors.dangerDark
+                            : maintenanceVsDepreciation.maintenanceToDepreciationRatio >= 50
+                              ? THEME.colors.warning
+                              : THEME.colors.success,
+                      },
+                    ]}
+                  >
+                    {maintenanceVsDepreciation.maintenanceToDepreciationRatio.toFixed(0)}%
+                  </Text>
+                </View>
+                <View style={styles.ratioBarTrack}>
+                  <View
+                    style={[
+                      styles.ratioBarFill,
+                      {
+                        width: `${Math.min(maintenanceVsDepreciation.maintenanceToDepreciationRatio, 100)}%`,
+                        backgroundColor:
+                          maintenanceVsDepreciation.maintenanceToDepreciationRatio >= 100
+                            ? THEME.colors.danger
+                            : maintenanceVsDepreciation.maintenanceToDepreciationRatio >= 50
+                              ? THEME.colors.warning
+                              : THEME.colors.success,
+                      },
+                    ]}
+                  />
+                  <View style={styles.ratioBarThreshold} />
+                </View>
+                <Text style={styles.ratioBarHint}>
+                  {maintenanceVsDepreciation.maintenanceToDepreciationRatio >= 100
+                    ? '⚠️ 维修投入已超过折旧损失，建议评估是否更换资产'
+                    : maintenanceVsDepreciation.maintenanceToDepreciationRatio >= 50
+                      ? '维修成本接近折旧损失，关注后续保养支出'
+                      : '维修投入合理，资产维护性价比良好'}
+                </Text>
+              </View>
+
+              {/* 维修黑洞 TOP 5 */}
+              {maintenanceVsDepreciation.moneyPits.length > 0 && (
+                <View style={styles.moneyPitList}>
+                  <Text style={styles.moneyPitTitle}>🕳️ 维修黑洞 TOP {maintenanceVsDepreciation.moneyPits.length}</Text>
+                  {maintenanceVsDepreciation.moneyPits.map((entry, index) => (
+                    <View key={`pit-${entry.item.id}`} style={styles.moneyPitRow}>
+                      <View style={styles.rankingBadge}>
+                        <Text style={styles.rankingBadgeText}>{index + 1}</Text>
+                      </View>
+                      <View style={styles.moneyPitInfo}>
+                        <Text style={styles.moneyPitName} numberOfLines={1}>
+                          {entry.item.name}
+                        </Text>
+                        <Text style={styles.moneyPitMeta} numberOfLines={1}>
+                          维修 {formatCurrency(entry.maintenance)} · 现值 {formatCurrency(entry.depreciatedValue)} · 占比 {entry.ratio.toFixed(0)}%
+                        </Text>
+                      </View>
+                      {entry.recommendReplace && (
+                        <View style={styles.replaceBadge}>
+                          <Text style={styles.replaceBadgeText}>建议更换</Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>资产老化分布 · 持仓年龄</Text>
+          <Text style={styles.subTitle}>
+            平均年龄 {Math.floor(assetAgeDistribution.avgAgeDays / 30)} 月 · 共 {assetAgeDistribution.totalCount} 件 · 价值 {formatCurrency(assetAgeDistribution.totalValue)}
+          </Text>
+          {assetAgeDistribution.rows.length === 0 ? (
+            <EmptyState message="暂无资产数据，添加资产后可见老化分布。" icon="📅" />
+          ) : (
+            <>
+              <View style={styles.ageBarChart}>
+                {assetAgeDistribution.rows.map(row => {
+                  const heightPct =
+                    assetAgeDistribution.maxCount > 0
+                      ? (row.count / assetAgeDistribution.maxCount) * 100
+                      : 0;
+                  return (
+                    <View key={`age-${row.year}`} style={styles.ageBarColumn}>
+                      <Text style={styles.ageBarValue}>{row.count}</Text>
+                      <View style={styles.ageBarTrack}>
+                        <View
+                          style={[
+                            styles.ageBarFill,
+                            {
+                              height: `${Math.max(heightPct, 8)}%`,
+                              backgroundColor:
+                                row.oldestDays >= 365 * 3
+                                  ? THEME.colors.danger
+                                  : row.oldestDays >= 365 * 2
+                                    ? THEME.colors.warning
+                                    : THEME.colors.success,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.ageBarLabel} numberOfLines={1}>
+                        '{String(row.year).slice(2)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <View style={styles.ageLegendRow}>
+                <View style={styles.ageLegendItem}>
+                  <View style={[styles.trendDot, { backgroundColor: THEME.colors.success }]} />
+                  <Text style={styles.ageLegendText}>≤ 2 年</Text>
+                </View>
+                <View style={styles.ageLegendItem}>
+                  <View style={[styles.trendDot, { backgroundColor: THEME.colors.warning }]} />
+                  <Text style={styles.ageLegendText}>2-3 年</Text>
+                </View>
+                <View style={styles.ageLegendItem}>
+                  <View style={[styles.trendDot, { backgroundColor: THEME.colors.danger }]} />
+                  <Text style={styles.ageLegendText}>≥ 3 年</Text>
+                </View>
+              </View>
+              {assetAgeDistribution.agingAssets.length > 0 && (
+                <View style={styles.agingAlertBox}>
+                  <Text style={styles.agingAlertTitle}>
+                    ⏳ 老化资产提醒 · {assetAgeDistribution.agingAssets.length} 件已超 3 年
+                  </Text>
+                  <Text style={styles.agingAlertHint}>
+                    建议评估这些资产是否还能继续服役，或考虑更新换代
+                  </Text>
+                  {assetAgeDistribution.agingAssets
+                    .slice(0, 3)
+                    .sort((a, b) => new Date(a.buy_date).getTime() - new Date(b.buy_date).getTime())
+                    .map(item => {
+                      const ageDays = Math.floor(
+                        (Date.now() - new Date(item.buy_date).getTime()) / (1000 * 60 * 60 * 24),
+                      );
+                      return (
+                        <View key={`aging-${item.id}`} style={styles.agingAssetRow}>
+                          <Text style={styles.agingAssetName} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={styles.agingAssetAge}>
+                            {Math.floor(ageDays / 365)} 年 {Math.floor((ageDays % 365) / 30)} 月
+                          </Text>
+                        </View>
+                      );
+                    })}
+                </View>
+              )}
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>资产集中度 · 持仓风险</Text>
+          <Text style={styles.subTitle}>
+            在用资产 {formatCurrency(concentrationIndex.totalValue)} · HHI 指数 {concentrationIndex.hhi.toFixed(0)}
+          </Text>
+          {concentrationIndex.totalValue === 0 ? (
+            <EmptyState message="暂无在用资产，添加后可见集中度分析。" icon="📊" />
+          ) : (
+            <>
+              <View
+                style={[
+                  styles.concentrationBanner,
+                  concentrationIndex.concentration === 'high' && styles.concentrationBannerHigh,
+                  concentrationIndex.concentration === 'medium' && styles.concentrationBannerMedium,
+                  concentrationIndex.concentration === 'low' && styles.concentrationBannerLow,
+                ]}
+              >
+                <Text style={styles.concentrationBannerLabel}>集中度等级</Text>
+                <Text style={styles.concentrationBannerValue}>
+                  {concentrationIndex.concentration === 'high'
+                    ? '过高'
+                    : concentrationIndex.concentration === 'medium'
+                      ? '偏高'
+                      : concentrationIndex.concentration === 'low'
+                        ? '适中'
+                        : '分散'}
+                </Text>
+              </View>
+              <View style={styles.concentrationRow}>
+                <View style={styles.concentrationBlock}>
+                  <Text style={styles.concentrationLabel}>CR3 (TOP3 占比)</Text>
+                  <Text
+                    style={[
+                      styles.concentrationValue,
+                      {
+                        color:
+                          concentrationIndex.top3Ratio >= 80
+                            ? THEME.colors.dangerDark
+                            : concentrationIndex.top3Ratio >= 60
+                              ? THEME.colors.warning
+                              : THEME.colors.success,
+                      },
+                    ]}
+                  >
+                    {concentrationIndex.top3Ratio.toFixed(0)}%
+                  </Text>
+                </View>
+                <View style={styles.depSummaryDivider} />
+                <View style={styles.concentrationBlock}>
+                  <Text style={styles.concentrationLabel}>CR5 (TOP5 占比)</Text>
+                  <Text
+                    style={[
+                      styles.concentrationValue,
+                      {
+                        color:
+                          concentrationIndex.top5Ratio >= 90
+                            ? THEME.colors.dangerDark
+                            : concentrationIndex.top5Ratio >= 70
+                              ? THEME.colors.warning
+                              : THEME.colors.success,
+                      },
+                    ]}
+                  >
+                    {concentrationIndex.top5Ratio.toFixed(0)}%
+                  </Text>
+                </View>
+              </View>
+              {concentrationIndex.topAssets.length > 0 && (
+                <View style={styles.legend}>
+                  <Text style={styles.moneyPitTitle}>🏆 TOP {concentrationIndex.topAssets.length} 资产</Text>
+                  {concentrationIndex.topAssets.map((entry, index) => (
+                    <View key={`top-${entry.id}`} style={styles.legendRow}>
+                      <View style={styles.legendLeft}>
+                        <View style={styles.rankingBadge}>
+                          <Text style={styles.rankingBadgeText}>{index + 1}</Text>
+                        </View>
+                        <Text style={styles.legendName} numberOfLines={1}>
+                          {entry.name}
+                        </Text>
+                      </View>
+                      <View style={styles.depRowRight}>
+                        <Text style={styles.legendMeta} numberOfLines={1}>
+                          {formatCurrency(entry.value)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.depRowRate,
+                            entry.share >= 50
+                              ? { color: THEME.colors.dangerDark }
+                              : entry.share >= 30
+                                ? { color: THEME.colors.warning }
+                                : { color: THEME.colors.success },
+                          ]}
+                        >
+                          {entry.share.toFixed(0)}%
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {concentrationIndex.concentration === 'high' && (
+                <Text style={styles.concentrationHint}>
+                  ⚠️ 资产过度集中于少数大件，建议分散配置以降低单点风险
+                </Text>
+              )}
             </>
           )}
         </View>
@@ -1216,5 +1766,323 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.sm,
     fontWeight: '900',
     color: THEME.colors.surface,
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    alignSelf: 'stretch',
+    marginBottom: THEME.spacing.md,
+    gap: THEME.spacing.xs,
+  },
+  balanceBlock: {
+    flex: 1,
+    paddingVertical: THEME.spacing.md,
+    paddingHorizontal: THEME.spacing.sm,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    alignItems: 'center',
+    gap: 4,
+  },
+  balanceBlockWinner: {
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    backgroundColor: THEME.colors.surface,
+  },
+  balanceLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  balanceValue: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  balanceVersus: {
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  balanceVersusText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: THEME.colors.textSecondary,
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  balanceArrow: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  ratioBarWrap: {
+    alignSelf: 'stretch',
+    marginBottom: THEME.spacing.md,
+    gap: 6,
+  },
+  ratioBarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  ratioBarLabel: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  ratioBarValue: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  ratioBarTrack: {
+    height: 14,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  ratioBarFill: {
+    height: '100%',
+    backgroundColor: THEME.colors.success,
+    borderRadius: 2,
+  },
+  ratioBarThreshold: {
+    position: 'absolute',
+    left: '50%',
+    top: 0,
+    bottom: 0,
+    width: 1.5,
+    backgroundColor: THEME.colors.borderDark,
+  },
+  ratioBarHint: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    textAlign: 'center',
+  },
+  moneyPitList: {
+    alignSelf: 'stretch',
+    marginTop: THEME.spacing.sm,
+    gap: THEME.spacing.xs,
+  },
+  moneyPitTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+    marginBottom: 4,
+  },
+  moneyPitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: THEME.spacing.sm,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+  },
+  moneyPitInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  moneyPitName: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  moneyPitMeta: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  replaceBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: THEME.colors.danger,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.dangerDark,
+    borderRadius: 4,
+  },
+  replaceBadgeText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  ageBarChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
+    height: 130,
+    marginTop: THEME.spacing.sm,
+    marginBottom: THEME.spacing.xs,
+    paddingHorizontal: 4,
+    gap: 6,
+  },
+  ageBarColumn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+    gap: 4,
+  },
+  ageBarValue: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: THEME.colors.textSecondary,
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  ageBarTrack: {
+    width: '70%',
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    overflow: 'hidden',
+    minHeight: 50,
+  },
+  ageBarFill: {
+    width: '100%',
+    borderRadius: 2,
+  },
+  ageBarLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  ageLegendRow: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    gap: THEME.spacing.lg,
+    marginBottom: THEME.spacing.sm,
+  },
+  ageLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ageLegendText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  agingAlertBox: {
+    alignSelf: 'stretch',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1.5,
+    borderColor: THEME.colors.danger,
+    borderRadius: THEME.borderRadius,
+    padding: THEME.spacing.md,
+    gap: 4,
+  },
+  agingAlertTitle: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    color: THEME.colors.dangerDark,
+  },
+  agingAlertHint: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    marginBottom: 4,
+  },
+  agingAssetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.colors.border,
+  },
+  agingAssetName: {
+    flex: 1,
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  agingAssetAge: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: THEME.colors.dangerDark,
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  concentrationBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    paddingVertical: THEME.spacing.md,
+    paddingHorizontal: THEME.spacing.lg,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: THEME.borderRadius,
+    marginBottom: THEME.spacing.md,
+  },
+  concentrationBannerHigh: {
+    backgroundColor: '#FFE5E5',
+    borderColor: THEME.colors.dangerDark,
+  },
+  concentrationBannerMedium: {
+    backgroundColor: '#FFFBEA',
+    borderColor: THEME.colors.warning,
+  },
+  concentrationBannerLow: {
+    backgroundColor: '#E8F8F5',
+    borderColor: THEME.colors.success,
+  },
+  concentrationBannerLabel: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  concentrationBannerValue: {
+    fontSize: THEME.fontSize.lg,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+    color: THEME.colors.primaryDark,
+  },
+  concentrationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    marginBottom: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+  },
+  concentrationBlock: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  concentrationLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  concentrationValue: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  concentrationHint: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.dangerDark,
+    textAlign: 'center',
+    marginTop: THEME.spacing.xs,
   },
 });

@@ -1,7 +1,9 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
   Animated,
+  LayoutAnimation,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -64,6 +66,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
 
   const [redeemModalVisible, setRedeemModalVisible] = useState(false);
   const [redeemBusy, setRedeemBusy] = useState(false);
+  const [healthExpanded, setHealthExpanded] = useState(false);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
   const [maintModalVisible, setMaintModalVisible] = useState(false);
@@ -343,6 +346,42 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       ? realizedProfit
       : dailyCost;
 
+  /** 根据各项维度得分生成针对性的健康度提升建议 */
+  const healthTip = (() => {
+    const { service, warranty, status } = assetHealth.breakdown;
+    const tips: string[] = [];
+    if (service < 30) {
+      if (serviceProgress.expectedDays === null) {
+        tips.push('可在编辑中设置「预期使用天数」，让健康度评估更精确');
+      } else if (serviceProgress.overService) {
+        tips.push(`已超期服役 ${activeDays - (serviceProgress.expectedDays ?? 0)} 天，可考虑是否需要更换或保养`);
+      } else {
+        tips.push(`已使用 ${activeDays} / ${serviceProgress.expectedDays} 天，接近寿命终点`);
+      }
+    }
+    if (warranty < 18) {
+      if (warrantyInfo.status === 'none') {
+        tips.push('可在编辑中填写「保修到期日」，便于跟踪售后');
+      } else if (warrantyInfo.status === 'expired') {
+        tips.push(`已过保 ${Math.abs(warrantyInfo.remainingDays ?? 0)} 天，维修需自理`);
+      } else if (warrantyInfo.status === 'expiring') {
+        tips.push(`保修将在 ${warrantyInfo.remainingDays} 天内到期，可考虑提前送检`);
+      }
+    }
+    if (status < 20) {
+      tips.push('资产已停用，可考虑恢复使用或售出释放成本');
+    }
+    if (tips.length === 0) {
+      return '各项指标均处于健康状态，继续保持良好的使用习惯即可';
+    }
+    return tips.join('；');
+  })();
+
+  function toggleHealthExpanded() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setHealthExpanded(prev => !prev);
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.card}>
@@ -367,12 +406,124 @@ export function ItemDetailScreen({ route, navigation }: Props) {
           />
         </View>
         {assetHealth.grade !== 'unknown' && (
-          <View style={styles.healthRow}>
-            <Text style={styles.healthRowLabel}>健康度</Text>
-            <HealthBadge grade={assetHealth.grade} score={assetHealth.score} />
-            <Text style={styles.healthRowHint}>
-              服役 {assetHealth.breakdown.service} · 保修 {assetHealth.breakdown.warranty} · 状态 {assetHealth.breakdown.status}
-            </Text>
+          <View style={styles.healthSection}>
+            <TouchableOpacity
+              style={styles.healthRow}
+              onPress={toggleHealthExpanded}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.healthRowLabel}>健康度</Text>
+              <HealthBadge grade={assetHealth.grade} score={assetHealth.score} />
+              <Text
+                style={styles.healthRowHint}
+                numberOfLines={healthExpanded ? 0 : 1}
+              >
+                服役 {assetHealth.breakdown.service} · 保修 {assetHealth.breakdown.warranty} · 状态 {assetHealth.breakdown.status}
+              </Text>
+              <Text style={styles.healthChevron}>
+                {healthExpanded ? '收起 ▲' : '详情 ▼'}
+              </Text>
+            </TouchableOpacity>
+
+            {healthExpanded && (
+              <View style={styles.healthDetails}>
+                <View style={styles.healthBreakdownRow}>
+                  <View style={styles.healthBreakdownHeader}>
+                    <Text style={styles.healthBreakdownLabel}>🛠️ 服役进度</Text>
+                    <Text style={styles.healthBreakdownScore}>
+                      {assetHealth.breakdown.service} / 50
+                    </Text>
+                  </View>
+                  <View style={styles.healthBarTrack}>
+                    <View
+                      style={[
+                        styles.healthBarFill,
+                        {
+                          width: `${Math.max((assetHealth.breakdown.service / 50) * 100, 2)}%`,
+                          backgroundColor: THEME.colors.primary,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.healthBreakdownHint}>
+                    {serviceProgress.expectedDays === null
+                      ? '未设置预期寿命，按默认中等偏高评估'
+                      : serviceProgress.overService
+                        ? `已超期服役 ${activeDays - (serviceProgress.expectedDays ?? 0)} 天，已回本仍在用`
+                        : `当前进度 ${Math.round((serviceProgress.progress ?? 0) * 100)}%，越接近寿命终点分数越低`}
+                  </Text>
+                </View>
+
+                <View style={styles.healthBreakdownRow}>
+                  <View style={styles.healthBreakdownHeader}>
+                    <Text style={styles.healthBreakdownLabel}>🛡️ 保修状态</Text>
+                    <Text style={styles.healthBreakdownScore}>
+                      {assetHealth.breakdown.warranty} / 30
+                    </Text>
+                  </View>
+                  <View style={styles.healthBarTrack}>
+                    <View
+                      style={[
+                        styles.healthBarFill,
+                        {
+                          width: `${Math.max((assetHealth.breakdown.warranty / 30) * 100, 2)}%`,
+                          backgroundColor:
+                            warrantyInfo.status === 'active'
+                              ? THEME.colors.success
+                              : warrantyInfo.status === 'expiring'
+                                ? THEME.colors.warning
+                                : THEME.colors.danger,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.healthBreakdownHint}>
+                    {warrantyInfo.status === 'none'
+                      ? '未设置保修期，按默认低分评估'
+                      : warrantyInfo.status === 'active'
+                        ? warrantyInfo.remainingDays !== null
+                          ? `在保修期内，剩余 ${warrantyInfo.remainingDays} 天`
+                          : '在保修期内'
+                        : warrantyInfo.status === 'expiring'
+                          ? `即将过保，剩余 ${warrantyInfo.remainingDays} 天`
+                          : `已过保 ${Math.abs(warrantyInfo.remainingDays ?? 0)} 天`}
+                  </Text>
+                </View>
+
+                <View style={styles.healthBreakdownRow}>
+                  <View style={styles.healthBreakdownHeader}>
+                    <Text style={styles.healthBreakdownLabel}>📦 资产状态</Text>
+                    <Text style={styles.healthBreakdownScore}>
+                      {assetHealth.breakdown.status} / 20
+                    </Text>
+                  </View>
+                  <View style={styles.healthBarTrack}>
+                    <View
+                      style={[
+                        styles.healthBarFill,
+                        {
+                          width: `${Math.max((assetHealth.breakdown.status / 20) * 100, 2)}%`,
+                          backgroundColor:
+                            item.status === 'active'
+                              ? THEME.colors.success
+                              : THEME.colors.warning,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.healthBreakdownHint}>
+                    {item.status === 'active'
+                      ? '资产在用中，状态分满分'
+                      : '资产已停用，状态分扣半'}
+                  </Text>
+                </View>
+
+                <View style={styles.healthTipBox}>
+                  <Text style={styles.healthTipTitle}>💡 提升建议</Text>
+                  <Text style={styles.healthTipText}>{healthTip}</Text>
+                </View>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -486,6 +637,81 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               现值约为买入价的 {Math.round((serviceProgress.progress ?? 0) * 100)}%
             </Text>
           )}
+        </View>
+      )}
+
+      {hasExpectedLife && !isUnredeemed && (
+        <View style={styles.depHistoryCard}>
+          <Text style={styles.depHistoryTitle}>📉 折旧衰减曲线</Text>
+          <Text style={styles.depHistorySubTitle}>
+            从买入到预期寿命终点的价值衰减 · 当前 {formatCurrency(depreciatedValue)}
+          </Text>
+          <View style={styles.depHistoryChart}>
+            {(() => {
+              const expected = serviceProgress.expectedDays ?? 1;
+              const totalSteps = 10;
+              const currentStep = Math.min(
+                Math.floor((activeDays / expected) * totalSteps),
+                totalSteps,
+              );
+              return Array.from({ length: totalSteps + 1 }, (_, step) => {
+                const progress = step / totalSteps;
+                const sampleActiveDays = Math.floor(progress * expected);
+                const sampleValue = calculateDepreciatedValue(item, sampleActiveDays);
+                const heightPct =
+                  item.total_price > 0
+                    ? Math.max((sampleValue / item.total_price) * 100, 4)
+                    : 4;
+                const isPast = step < currentStep;
+                const isCurrent = step === currentStep;
+                return (
+                  <View key={`dep-${step}`} style={styles.depHistoryBarColumn}>
+                    <View style={styles.depHistoryBarTrack}>
+                      <View
+                        style={[
+                          styles.depHistoryBarFill,
+                          {
+                            height: `${heightPct}%`,
+                            backgroundColor: isCurrent
+                              ? THEME.colors.primary
+                              : isPast
+                                ? THEME.colors.primaryLight
+                                : THEME.colors.border,
+                            borderWidth: isCurrent ? 1.5 : 0,
+                            borderColor: isCurrent ? THEME.colors.primaryDark : 'transparent',
+                          },
+                        ]}
+                      />
+                    </View>
+                    {step % 2 === 0 && (
+                      <Text style={styles.depHistoryBarLabel}>
+                        {Math.round(progress * 100)}%
+                      </Text>
+                    )}
+                  </View>
+                );
+              });
+            })()}
+          </View>
+          <View style={styles.depHistoryLegendRow}>
+            <View style={styles.depHistoryLegendItem}>
+              <View style={[styles.trendDot, { backgroundColor: THEME.colors.primaryLight }]} />
+              <Text style={styles.depHistoryLegendText}>已折旧</Text>
+            </View>
+            <View style={styles.depHistoryLegendItem}>
+              <View style={[styles.trendDot, { backgroundColor: THEME.colors.primary }]} />
+              <Text style={styles.depHistoryLegendText}>当前位置</Text>
+            </View>
+            <View style={styles.depHistoryLegendItem}>
+              <View style={[styles.trendDot, { backgroundColor: THEME.colors.border }]} />
+              <Text style={styles.depHistoryLegendText}>预期衰减</Text>
+            </View>
+          </View>
+          <Text style={styles.depHistoryHint}>
+            {serviceProgress.overService
+              ? `资产已超出预期寿命，理论上价值已归零；当前仍在使用 = 净回本 ${formatCurrency(depreciatedValue)}`
+              : `按线性折旧估算，到预期寿命终点（${serviceProgress.expectedDays} 天）时价值将归零`}
+          </Text>
         </View>
       )}
 
@@ -1123,14 +1349,100 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
     lineHeight: 18,
   },
-  healthRow: {
+  depHistoryCard: {
+    marginTop: THEME.spacing.md,
+    padding: THEME.spacing.md,
+    borderRadius: THEME.borderRadius,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    backgroundColor: THEME.colors.surface,
+  },
+  depHistoryTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+    marginBottom: 2,
+  },
+  depHistorySubTitle: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginBottom: THEME.spacing.md,
+  },
+  depHistoryChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 110,
+    paddingHorizontal: 2,
+    marginBottom: THEME.spacing.xs,
+  },
+  depHistoryBarColumn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+    marginHorizontal: 1,
+    gap: 4,
+  },
+  depHistoryBarTrack: {
+    width: '85%',
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  depHistoryBarFill: {
+    width: '100%',
+    borderRadius: 2,
+  },
+  depHistoryBarLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  depHistoryLegendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: THEME.spacing.md,
+    marginBottom: THEME.spacing.xs,
+  },
+  depHistoryLegendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: THEME.spacing.sm,
+    gap: 4,
+  },
+  trendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: THEME.colors.borderDark,
+  },
+  depHistoryLegendText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  depHistoryHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    lineHeight: 16,
+    textAlign: 'center',
+    marginTop: THEME.spacing.xs,
+  },
+  healthSection: {
     marginTop: THEME.spacing.md,
     paddingTop: THEME.spacing.sm,
     borderTopWidth: 1,
     borderTopColor: THEME.colors.border,
+  },
+  healthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
     flexWrap: 'wrap',
   },
   healthRowLabel: {
@@ -1143,6 +1455,82 @@ const styles = StyleSheet.create({
     color: THEME.colors.textLight,
     flex: 1,
     minWidth: 120,
+  },
+  healthChevron: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: THEME.colors.primary,
+    marginLeft: 'auto',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.primary,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.primaryLight + '20',
+    overflow: 'hidden',
+  },
+  healthDetails: {
+    marginTop: THEME.spacing.sm,
+    gap: THEME.spacing.sm,
+  },
+  healthBreakdownRow: {
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: 4,
+    padding: THEME.spacing.sm,
+  },
+  healthBreakdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  healthBreakdownLabel: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  healthBreakdownScore: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    color: THEME.colors.textSecondary,
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  healthBarTrack: {
+    height: 6,
+    backgroundColor: THEME.colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  healthBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  healthBreakdownHint: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    lineHeight: 14,
+  },
+  healthTipBox: {
+    marginTop: THEME.spacing.xs,
+    padding: THEME.spacing.sm,
+    backgroundColor: THEME.colors.primaryLight + '18',
+    borderLeftWidth: 3,
+    borderLeftColor: THEME.colors.primary,
+    borderRadius: 4,
+  },
+  healthTipTitle: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    color: THEME.colors.primaryDark,
+    marginBottom: 4,
+  },
+  healthTipText: {
+    fontSize: 10,
+    color: THEME.colors.textPrimary,
+    lineHeight: 15,
   },
   warrantyCard: {
     marginTop: THEME.spacing.md,

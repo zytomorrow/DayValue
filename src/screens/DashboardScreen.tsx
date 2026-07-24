@@ -12,11 +12,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList, OneTimeItem, Subscription, StoredCard } from '../types';
+import type { MaintenanceLog, RootStackParamList, OneTimeItem, Subscription, StoredCard } from '../types';
 import {
   getAllOneTimeItems,
   getAllSubscriptions,
   getAllStoredCards,
+  getAllMaintenanceLogs,
   getPreference,
   setPreference,
   redeemOneTimeItem,
@@ -32,6 +33,8 @@ import {
   calculateWarrantyInfo,
   calculateSubscriptionNextRenewalDate,
   calculateDaysUntil,
+  calculateDaysSince,
+  calculateMonthlySpendingTrend,
   collectExpiryReminders,
   collectSubscriptionRenewalReminders,
   isProfitableSale,
@@ -101,6 +104,10 @@ const DEBT_LAYOUT_MODE_KEY = 'debt_layout_mode';
 const STORED_CARD_SORT_FIELD_KEY = 'stored_card_sort_field';
 const STORED_CARD_SORT_DIRECTION_KEY = 'stored_card_sort_direction';
 const STORED_CARD_LAYOUT_MODE_KEY = 'stored_card_layout_mode';
+/** 与 SettingsScreen 中的 REMINDER_ENABLED_KEY 保持一致 */
+const REMINDER_ENABLED_KEY = 'reminder_enabled';
+/** 与 SettingsScreen 中的 MONTHLY_BUDGET_KEY 保持一致 */
+const MONTHLY_BUDGET_KEY = 'monthly_budget';
 
 function chunkItems<T>(items: T[], size: number): T[][] {
   const result: T[][] = [];
@@ -269,6 +276,7 @@ export function DashboardScreen({ navigation }: Props) {
   const [items, setItems] = useState<OneTimeItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
+  const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
@@ -281,6 +289,8 @@ export function DashboardScreen({ navigation }: Props) {
   const [debtSearch, setDebtSearch] = useState('');
   const [storedCardSearch, setStoredCardSearch] = useState('');
   const [warrantyFilter, setWarrantyFilter] = useState<WarrantyStatus | null>(null);
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null);
 
   const [itemSortField, setItemSortField] = useState<ItemSortField>('buy_date');
   const [itemSortDirection, setItemSortDirection] = useState<SortDirection>('desc');
@@ -297,14 +307,16 @@ export function DashboardScreen({ navigation }: Props) {
 
   const loadData = useCallback(async () => {
     try {
-      const [nextItems, nextSubscriptions, nextStoredCards] = await Promise.all([
+      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
+        getAllMaintenanceLogs(db),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
+      setMaintenanceLogs(nextLogs);
     } catch (error) {
       console.error('加载首页数据失败', error);
     }
@@ -323,6 +335,8 @@ export function DashboardScreen({ navigation }: Props) {
         storedFieldValue,
         storedDirectionValue,
         storedLayoutValue,
+        reminderEnabledValue,
+        monthlyBudgetValue,
       ] = await Promise.all([
         getPreference(db, ASSET_SORT_FIELD_KEY),
         getPreference(db, ASSET_SORT_DIRECTION_KEY),
@@ -334,6 +348,8 @@ export function DashboardScreen({ navigation }: Props) {
         getPreference(db, STORED_CARD_SORT_FIELD_KEY),
         getPreference(db, STORED_CARD_SORT_DIRECTION_KEY),
         getPreference(db, STORED_CARD_LAYOUT_MODE_KEY),
+        getPreference(db, REMINDER_ENABLED_KEY),
+        getPreference(db, MONTHLY_BUDGET_KEY),
       ]);
 
       if (assetFieldValue === 'buy_date' || assetFieldValue === 'total_price') {
@@ -366,6 +382,11 @@ export function DashboardScreen({ navigation }: Props) {
       if (storedLayoutValue === 'list' || storedLayoutValue === 'grid') {
         setStoredCardLayoutMode(storedLayoutValue);
       }
+      if (reminderEnabledValue !== null) {
+        setReminderEnabled(reminderEnabledValue === '1');
+      }
+      const budgetNum = parseFloat(monthlyBudgetValue ?? '');
+      setMonthlyBudget(Number.isFinite(budgetNum) && budgetNum > 0 ? budgetNum : null);
     } catch (error) {
       console.error('加载首页偏好失败', error);
     }
@@ -697,6 +718,31 @@ export function DashboardScreen({ navigation }: Props) {
     expiryReminders.serviceExpiring.length > 0 ||
     expiryReminders.overService.length > 0 ||
     expiryReminders.subscriptionRenewing.length > 0;
+
+  /** 沉睡卡包：自上次更新已超过卡片自身的 reminder_days 阈值 */
+  const dormantStoredCards = useMemo(() => {
+    return activeStoredCards
+      .map(card => ({
+        card,
+        dormantDays: calculateDaysSince(card.last_updated_date),
+      }))
+      .filter(({ card, dormantDays }) => dormantDays > card.reminder_days)
+      .sort((a, b) => b.dormantDays - a.dormantDays);
+  }, [activeStoredCards]);
+  const hasDormantCardReminders = reminderEnabled && dormantStoredCards.length > 0;
+
+  /** 月度预算：基于本月已花费 vs 用户配置的预算 */
+  const monthlyBudgetInfo = useMemo(() => {
+    if (monthlyBudget === null || monthlyBudget <= 0) return null;
+    const trend = calculateMonthlySpendingTrend(items, subscriptions, maintenanceLogs, 1);
+    const currentMonth = trend[trend.length - 1];
+    const spent = currentMonth?.total ?? 0;
+    const ratio = monthlyBudget > 0 ? (spent / monthlyBudget) * 100 : 0;
+    const remaining = monthlyBudget - spent;
+    const status: 'safe' | 'warning' | 'over' =
+      ratio >= 100 ? 'over' : ratio >= 80 ? 'warning' : 'safe';
+    return { spent, budget: monthlyBudget, ratio, remaining, status, breakdown: currentMonth };
+  }, [items, subscriptions, maintenanceLogs, monthlyBudget]);
 
   const assetSortSummary = useMemo(() => {
     return getSortSummary(
@@ -1038,7 +1084,7 @@ export function DashboardScreen({ navigation }: Props) {
           </View>
         )}
 
-        {hasReminders && !isAssetFiltered && !isSearching && (
+        {reminderEnabled && hasReminders && !isAssetFiltered && !isSearching && (
           <View style={styles.reminderCard}>
             <Text style={styles.reminderTitle}>⏰ 到期提醒</Text>
             {expiryReminders.warrantyExpiring.length > 0 && (
@@ -1307,6 +1353,7 @@ export function DashboardScreen({ navigation }: Props) {
     const showHistoryFirst = !hasActiveCards && hasArchivedCards;
     const hasAnyCard = hasActiveCards || hasArchivedCards;
     const hasFilteredCardContent = filteredActiveStoredCards.length > 0 || filteredArchivedStoredCards.length > 0;
+    const isStoredCardSearching = storedCardSearch.trim().length > 0;
 
     return (
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
@@ -1316,6 +1363,37 @@ export function DashboardScreen({ navigation }: Props) {
             onChange={setStoredCardSearch}
             placeholder="搜索卡包..."
           />
+        )}
+
+        {hasDormantCardReminders && !isStoredCardSearching && (
+          <View style={styles.dormantCardBanner}>
+            <Text style={styles.dormantCardBannerTitle}>
+              💤 沉睡卡包提醒 · {dormantStoredCards.length} 张
+            </Text>
+            <Text style={styles.dormantCardBannerHint}>
+              以下卡包已超过自定义提醒阈值，建议尽快使用或更新余额
+            </Text>
+            {dormantStoredCards.slice(0, 3).map(({ card, dormantDays }) => (
+              <TouchableOpacity
+                key={`dormant-${card.id}`}
+                style={styles.dormantCardRow}
+                onPress={() => navigation.navigate('AddEditStoredCard', { storedCardId: card.id })}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.dormantCardName} numberOfLines={1}>
+                  {card.name}
+                </Text>
+                <Text style={styles.dormantCardMeta}>
+                  已沉睡 {dormantDays} 天 · 超阈值 {dormantDays - card.reminder_days} 天
+                </Text>
+              </TouchableOpacity>
+            ))}
+            {dormantStoredCards.length > 3 && (
+              <Text style={styles.dormantCardMore}>
+                还有 {dormantStoredCards.length - 3} 张沉睡卡未展示
+              </Text>
+            )}
+          </View>
         )}
 
         <SectionToolbar
@@ -1397,6 +1475,58 @@ export function DashboardScreen({ navigation }: Props) {
           onPressAssetFilterTrigger={() => setAssetFilterSheetVisible(true)}
           onClearAssetFilter={() => setSelectedAssetCategoryId(null)}
         />
+
+        {monthlyBudgetInfo && (
+          <View
+            style={[
+              styles.budgetCard,
+              monthlyBudgetInfo.status === 'over' && styles.budgetCardOver,
+              monthlyBudgetInfo.status === 'warning' && styles.budgetCardWarning,
+            ]}
+          >
+            <View style={styles.budgetHeader}>
+              <Text style={styles.budgetTitle}>
+                {monthlyBudgetInfo.status === 'over'
+                  ? '🚨 本月已超支'
+                  : monthlyBudgetInfo.status === 'warning'
+                    ? '⚠️ 本月预算吃紧'
+                    : '✅ 本月预算可控'}
+              </Text>
+              <Text style={styles.budgetRatio}>
+                {monthlyBudgetInfo.ratio.toFixed(0)}%
+              </Text>
+            </View>
+            <View style={styles.budgetBarTrack}>
+              <View
+                style={[
+                  styles.budgetBarFill,
+                  {
+                    width: `${Math.min(monthlyBudgetInfo.ratio, 100)}%`,
+                    backgroundColor:
+                      monthlyBudgetInfo.status === 'over'
+                        ? THEME.colors.danger
+                        : monthlyBudgetInfo.status === 'warning'
+                          ? THEME.colors.warning
+                          : THEME.colors.success,
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.budgetFooter}>
+              <Text style={styles.budgetFooterLabel}>
+                已花 {formatCurrency(monthlyBudgetInfo.spent)}
+              </Text>
+              <Text style={[styles.budgetFooterLabel, styles.budgetFooterValue]}>
+                {monthlyBudgetInfo.remaining >= 0
+                  ? `剩 ${formatCurrency(monthlyBudgetInfo.remaining)}`
+                  : `超 ${formatCurrency(Math.abs(monthlyBudgetInfo.remaining))}`}
+              </Text>
+              <Text style={styles.budgetFooterLabel}>
+                预算 {formatCurrency(monthlyBudgetInfo.budget)}
+              </Text>
+            </View>
+          </View>
+        )}
 
         <View style={styles.tabs}>
           <TouchableOpacity
@@ -1698,6 +1828,70 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  budgetCard: {
+    marginHorizontal: THEME.spacing.lg,
+    marginTop: THEME.spacing.md,
+    paddingVertical: THEME.spacing.md,
+    paddingHorizontal: THEME.spacing.lg,
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: THEME.borderRadius,
+    ...THEME.pixelShadow,
+  },
+  budgetCardOver: {
+    borderColor: THEME.colors.dangerDark,
+    backgroundColor: '#FFF5F5',
+  },
+  budgetCardWarning: {
+    borderColor: THEME.colors.warning,
+    backgroundColor: '#FFFBEA',
+  },
+  budgetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  budgetTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  budgetRatio: {
+    fontSize: THEME.fontSize.lg,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+    color: THEME.colors.primaryDark,
+  },
+  budgetBarTrack: {
+    height: 12,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  budgetBarFill: {
+    height: '100%',
+    backgroundColor: THEME.colors.success,
+    borderRadius: 2,
+  },
+  budgetFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  budgetFooterLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  budgetFooterValue: {
+    color: THEME.colors.primaryDark,
+    fontWeight: '900',
   },
   tabs: {
     flexDirection: 'row',
@@ -2010,6 +2204,58 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: THEME.colors.surface,
     marginLeft: THEME.spacing.sm,
+  },
+  dormantCardBanner: {
+    backgroundColor: '#FFF8E1',
+    borderWidth: 2,
+    borderColor: THEME.colors.warning,
+    borderRadius: THEME.borderRadius,
+    padding: THEME.spacing.md,
+    marginBottom: THEME.spacing.md,
+    ...THEME.pixelShadow,
+  },
+  dormantCardBannerTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: '#856404',
+    marginBottom: 2,
+  },
+  dormantCardBannerHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginBottom: THEME.spacing.sm,
+    lineHeight: 16,
+  },
+  dormantCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: THEME.spacing.sm,
+    backgroundColor: THEME.colors.surface,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    marginBottom: 4,
+  },
+  dormantCardName: {
+    flex: 1,
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    marginRight: THEME.spacing.sm,
+  },
+  dormantCardMeta: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.dangerDark,
+  },
+  dormantCardMore: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginTop: 4,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   reminderTitle: {
     fontSize: THEME.fontSize.sm,

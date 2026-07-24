@@ -1,19 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Linking,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../types';
-import { initDB } from '../database';
+import { initDB, getPreference, setPreference } from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
 import { BrutalButton } from '../components';
 import { THEME } from '../utils/constants';
@@ -128,11 +131,129 @@ export function SettingsScreen({ navigation }: Props) {
   const { refreshCategories } = useCategories();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [cacheCleaning, setCacheCleaning] = useState(false);
+  const [cacheSizeText, setCacheSizeText] = useState('计算中...');
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderDays, setReminderDays] = useState('30');
+  const [monthlyBudget, setMonthlyBudget] = useState('');
+
+  const REMINDER_ENABLED_KEY = 'reminder_enabled';
+  const REMINDER_DAYS_KEY = 'reminder_days';
+  const MONTHLY_BUDGET_KEY = 'monthly_budget';
 
   const currentVersion = useMemo(() => {
     const version = Constants.expoConfig?.version;
     return typeof version === 'string' && version.trim() ? version.trim() : '0.0.0';
   }, []);
+
+  /** 计算缓存（实体图片目录）大小 */
+  const refreshCacheSize = useCallback(async () => {
+    try {
+      const root = FileSystem.documentDirectory
+        ? `${FileSystem.documentDirectory}entity-images`
+        : null;
+      if (!root) {
+        setCacheSizeText('不可用');
+        return;
+      }
+      const info = await FileSystem.getInfoAsync(root);
+      if (!info.exists || !('size' in info) || typeof info.size !== 'number') {
+        setCacheSizeText('0 B');
+        return;
+      }
+      const bytes = info.size;
+      let text: string;
+      if (bytes < 1024) text = `${bytes} B`;
+      else if (bytes < 1024 * 1024) text = `${(bytes / 1024).toFixed(1)} KB`;
+      else text = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+      setCacheSizeText(text);
+    } catch {
+      setCacheSizeText('未知');
+    }
+  }, []);
+
+  const loadReminderPrefs = useCallback(async () => {
+    try {
+      const [enabled, days, budget] = await Promise.all([
+        getPreference(db, REMINDER_ENABLED_KEY),
+        getPreference(db, REMINDER_DAYS_KEY),
+        getPreference(db, MONTHLY_BUDGET_KEY),
+      ]);
+      if (enabled !== null) setReminderEnabled(enabled === '1');
+      if (days !== null && /^\d+$/.test(days)) setReminderDays(days);
+      if (budget !== null && /^\d+(\.\d+)?$/.test(budget)) setMonthlyBudget(budget);
+    } catch (error) {
+      console.error('加载提醒偏好失败', error);
+    }
+  }, [db]);
+
+  useEffect(() => {
+    void refreshCacheSize();
+    void loadReminderPrefs();
+  }, [refreshCacheSize, loadReminderPrefs]);
+
+  const handleBudgetChange = useCallback((text: string) => {
+    // 允许数字 + 小数点
+    if (!/^\d*\.?\d*$/.test(text)) return;
+    setMonthlyBudget(text);
+  }, []);
+
+  const handleBudgetBlur = useCallback(() => {
+    const num = parseFloat(monthlyBudget);
+    const normalized = Number.isFinite(num) && num > 0 ? String(num) : '';
+    if (normalized !== monthlyBudget) setMonthlyBudget(normalized);
+    void setPreference(db, MONTHLY_BUDGET_KEY, normalized).catch(error => {
+      console.error('保存月度预算失败', error);
+    });
+  }, [db, monthlyBudget]);
+
+  const handleToggleReminder = useCallback((next: boolean) => {
+    setReminderEnabled(next);
+    void setPreference(db, REMINDER_ENABLED_KEY, next ? '1' : '0').catch(error => {
+      console.error('保存提醒开关失败', error);
+    });
+  }, [db]);
+
+  const handleReminderDaysChange = useCallback((text: string) => {
+    // 仅允许整数
+    if (!/^\d*$/.test(text)) return;
+    setReminderDays(text);
+  }, []);
+
+  const handleReminderDaysBlur = useCallback(() => {
+    let num = parseInt(reminderDays, 10);
+    if (Number.isNaN(num) || num < 1) num = 1;
+    if (num > 365) num = 365;
+    const normalized = String(num);
+    if (normalized !== reminderDays) setReminderDays(normalized);
+    void setPreference(db, REMINDER_DAYS_KEY, normalized).catch(error => {
+      console.error('保存提醒天数失败', error);
+    });
+  }, [db, reminderDays]);
+
+  async function handleCleanCache() {
+    if (cacheCleaning) return;
+    alertConfirm(
+      '清理图片缓存',
+      '将删除本机未被任何记录引用的图片文件（不会删除数据库中的记录）。建议清理前先备份。',
+      () => void cleanCache(),
+      { confirmText: '清理', destructive: true },
+    );
+  }
+
+  async function cleanCache() {
+    if (cacheCleaning) return;
+    setCacheCleaning(true);
+    try {
+      await deleteAllEntityImagesAsync();
+      await refreshCacheSize();
+      alertSuccess('已清理', '图片缓存已清空。受影响记录将显示默认图标。');
+    } catch (error) {
+      alertError('清理失败', error instanceof Error ? error.message : '请重试');
+    } finally {
+      setCacheCleaning(false);
+    }
+  }
 
   async function openExternalUrl(
     url: string,
@@ -281,6 +402,96 @@ export function SettingsScreen({ navigation }: Props) {
           <SettingRow title="当前版本" value={currentVersion} showChevron={false} last />
         </BrutalCard>
 
+        <BrutalCard title="提醒设置" titleColor={THEME.colors.accent}>
+          <View style={styles.row}>
+            <View style={styles.reminderLabelBox}>
+              <Text style={styles.rowTitle}>应用内到期提醒</Text>
+              <Text style={styles.reminderHint}>
+                控制首页「⏰ 到期提醒」卡片的显示
+              </Text>
+            </View>
+            <Switch
+              value={reminderEnabled}
+              onValueChange={handleToggleReminder}
+              trackColor={{ false: THEME.colors.border, true: THEME.colors.accent }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor={THEME.colors.border}
+            />
+          </View>
+          <View style={[styles.row, styles.rowLast]}>
+            <View style={styles.reminderLabelBox}>
+              <Text style={styles.rowTitle}>提前提醒天数</Text>
+              <Text style={styles.reminderHint}>
+                保修/寿命到期前的预警阈值（1-365）
+              </Text>
+            </View>
+            <View style={styles.reminderDaysInputBox}>
+              <TextInput
+                value={reminderDays}
+                onChangeText={handleReminderDaysChange}
+                onBlur={handleReminderDaysBlur}
+                keyboardType="numeric"
+                selectTextOnFocus
+                style={styles.reminderDaysInput}
+                editable={reminderEnabled}
+              />
+              <Text style={styles.reminderDaysSuffix}>天</Text>
+            </View>
+          </View>
+          {!reminderEnabled && (
+            <Text style={styles.reminderDisabledHint}>
+              ⚠️ 提醒已关闭，首页将不再显示到期卡片
+            </Text>
+          )}
+        </BrutalCard>
+
+        <BrutalCard title="月度预算" titleColor={THEME.colors.primaryLight}>
+          <View style={[styles.row, styles.rowLast]}>
+            <View style={styles.reminderLabelBox}>
+              <Text style={styles.rowTitle}>每月支出预算</Text>
+              <Text style={styles.reminderHint}>
+                设置后，首页会显示本月已花费 vs 预算的进度条
+              </Text>
+            </View>
+            <View style={styles.reminderDaysInputBox}>
+              <TextInput
+                value={monthlyBudget}
+                onChangeText={handleBudgetChange}
+                onBlur={handleBudgetBlur}
+                keyboardType="numeric"
+                selectTextOnFocus
+                placeholder="0"
+                style={styles.reminderDaysInput}
+              />
+              <Text style={styles.reminderDaysSuffix}>元</Text>
+            </View>
+          </View>
+          {monthlyBudget === '' && (
+            <Text style={styles.reminderDisabledHint}>
+              💡 未设置预算时，首页不显示预算进度卡片
+            </Text>
+          )}
+        </BrutalCard>
+
+        <BrutalCard title="存储" titleColor={THEME.colors.success}>
+          <SettingRow
+            title="图片缓存"
+            value={cacheSizeText}
+            showChevron={false}
+          />
+          <BrutalButton
+            title="🧹 清理图片缓存"
+            onPress={handleCleanCache}
+            variant="outline"
+            loading={cacheCleaning}
+            disabled={cacheCleaning || resetting || checkingUpdate}
+            style={{ width: '100%' }}
+          />
+          <Text style={styles.updateHint}>
+            清理后已上传的封面图会丢失，记录本身不受影响。
+          </Text>
+        </BrutalCard>
+
         <BrutalCard title="版本更新" titleColor={THEME.colors.accent}>
           <BrutalButton
             title="检查并下载更新"
@@ -297,7 +508,12 @@ export function SettingsScreen({ navigation }: Props) {
 
         <BrutalCard title="关于" titleColor={THEME.colors.warning}>
           <SettingRow title="应用名称" value={APP_NAME} showChevron={false} />
-          <SettingRow title="当前版本" value={currentVersion} showChevron={false} last />
+          <SettingRow title="当前版本" value={currentVersion} showChevron={false} />
+          <SettingRow
+            title="关于 DayValue"
+            onPress={() => navigation.navigate('About')}
+            last
+          />
         </BrutalCard>
 
         <BrutalCard title="危险区" titleColor={THEME.colors.dangerDark}>
@@ -414,5 +630,44 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.sm,
     color: THEME.colors.textSecondary,
     lineHeight: 18,
+  },
+  reminderLabelBox: {
+    flex: 1,
+    paddingRight: THEME.spacing.md,
+  },
+  reminderHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textLight,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  reminderDaysInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  reminderDaysInput: {
+    width: 56,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: 4,
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: 4,
+    fontSize: THEME.fontSize.md,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+    backgroundColor: THEME.colors.background,
+    textAlign: 'center',
+  },
+  reminderDaysSuffix: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  reminderDisabledHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.warning,
+    marginTop: 4,
+    fontWeight: '700',
   },
 });
