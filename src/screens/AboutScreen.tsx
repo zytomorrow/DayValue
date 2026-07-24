@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types';
 import { THEME } from '../utils/constants';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
 import { alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;
@@ -93,6 +94,7 @@ function SectionCard({
 export function AboutScreen({}: Props) {
   const [licenseModalVisible, setLicenseModalVisible] = useState(false);
   const [ackModalVisible, setAckModalVisible] = useState(false);
+  const { t } = useTranslation();
 
   const appVersion = useMemo(() => {
     const version = Constants.expoConfig?.version;
@@ -133,7 +135,7 @@ export function AboutScreen({}: Props) {
           </Text>
         </SectionCard>
 
-        <SectionCard title="更新日志" accentColor={THEME.colors.accent}>
+        <SectionCard title={t('about.changelog')} accentColor={THEME.colors.accent}>
           {CHANGELOG.map(entry => (
             <View key={entry.version} style={styles.changelogEntry}>
               <View style={styles.changelogHeader}>
@@ -175,7 +177,7 @@ export function AboutScreen({}: Props) {
           >
             <Text style={styles.linkIcon}>📜</Text>
             <View style={styles.linkInfo}>
-              <Text style={styles.linkTitle}>开源协议</Text>
+              <Text style={styles.linkTitle}>{t('about.open_source')}</Text>
               <Text style={styles.linkUrl} numberOfLines={1}>AGPL-3.0 全文</Text>
             </View>
             <Text style={styles.linkChevron}>›</Text>

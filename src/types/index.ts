@@ -61,6 +61,31 @@ export interface MaintenanceLogInput {
   description?: string | null;
 }
 
+/** 周期性保养计划（MaintenancePlans 表） */
+export interface MaintenancePlan {
+  id: number;
+  item_id: number;
+  title: string;
+  /** 保养间隔天数（>0） */
+  interval_days: number;
+  /** 上次完成日期（YYYY-MM-DD） */
+  last_done_date: string | null;
+  /** 下次到期日期（YYYY-MM-DD） */
+  next_due_date: string | null;
+  /** 是否启用（0=停用，1=启用） */
+  enabled: number; // 0 | 1
+  created_at: string;
+}
+
+export interface MaintenancePlanInput {
+  item_id: number;
+  title: string;
+  interval_days: number;
+  last_done_date?: string | null;
+  next_due_date?: string | null;
+  enabled?: number;
+}
+
 /** 净资产快照（NetWorthSnapshots 表） */
 export interface NetWorthSnapshot {
   id: number;
@@ -190,4 +215,6 @@ export type RootStackParamList = {
   Categories: undefined;
   Statistics: undefined;
   About: undefined;
+  AnnualReport: { year?: number } | undefined;
+  Calendar: undefined;
 };

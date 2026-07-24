@@ -10,3 +10,5 @@ export { CategoriesScreen } from './CategoriesScreen';
 export { StatisticsScreen } from './StatisticsScreen';
 export { AddEditStoredCardScreen } from './AddEditStoredCardScreen';
 export { AboutScreen } from './AboutScreen';
+export { CalendarScreen } from './CalendarScreen';
+export { AnnualReportScreen } from './AnnualReportScreen';

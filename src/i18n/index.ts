@@ -1,0 +1,34 @@
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import { getLocales } from 'expo-localization';
+import zhCN from './zh-CN.json';
+import enUS from './en-US.json';
+
+export type AppLanguage = 'zh-CN' | 'en-US';
+export const SUPPORTED_LANGUAGES: { id: AppLanguage; name: string; nativeName: string }[] = [
+  { id: 'zh-CN', name: '简体中文', nativeName: '简体中文' },
+  { id: 'en-US', name: 'English', nativeName: 'English' },
+];
+
+function detectInitialLanguage(): AppLanguage {
+  try {
+    const locales = getLocales();
+    const lang = locales[0]?.languageCode ?? 'zh';
+    return lang.startsWith('en') ? 'en-US' : 'zh-CN';
+  } catch {
+    return 'zh-CN';
+  }
+}
+
+i18n.use(initReactI18next).init({
+  resources: {
+    'zh-CN': { translation: zhCN },
+    'en-US': { translation: enUS },
+  },
+  lng: detectInitialLanguage(),
+  fallbackLng: 'zh-CN',
+  interpolation: { escapeValue: false },
+});
+
+export default i18n;
+export { detectInitialLanguage };

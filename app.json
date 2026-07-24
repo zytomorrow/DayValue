@@ -19,7 +19,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.INTERNET",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
       ]
     },
     "web": {
@@ -32,6 +34,7 @@
       "expo-splash-screen",
       "expo-document-picker",
       "expo-sharing",
+      "expo-notifications",
       [
         "expo-image-picker",
         {

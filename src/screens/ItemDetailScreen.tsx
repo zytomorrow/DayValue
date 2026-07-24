@@ -13,14 +13,19 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { MaintenanceLog, OneTimeItem, RootStackParamList } from '../types';
+import type { MaintenanceLog, MaintenancePlan, OneTimeItem, RootStackParamList } from '../types';
 import {
   createMaintenanceLog,
+  createMaintenancePlan,
   deleteMaintenanceLog,
   deleteMaintenanceLogsByItem,
+  deleteMaintenancePlan,
+  deleteMaintenancePlansByItem,
   deleteOneTimeItem,
   getMaintenanceLogsByItem,
+  getMaintenancePlansByItem,
   getOneTimeItemById,
+  markMaintenancePlanDone,
   pauseOneTimeItem,
   redeemOneTimeItem,
   resumeOneTimeItem,
@@ -78,6 +83,12 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const [maintTitle, setMaintTitle] = useState('');
   const [maintDescription, setMaintDescription] = useState('');
   const [maintBusy, setMaintBusy] = useState(false);
+  const [maintenancePlans, setMaintenancePlans] = useState<MaintenancePlan[]>([]);
+  const [planModalVisible, setPlanModalVisible] = useState(false);
+  const [planTitle, setPlanTitle] = useState('');
+  const [planInterval, setPlanInterval] = useState('');
+  const [planLastDate, setPlanLastDate] = useState(getTodayString());
+  const [planBusy, setPlanBusy] = useState(false);
   const redeemScale = useRef(new Animated.Value(0.9)).current;
   const redeemShakeX = useRef(new Animated.Value(0)).current;
   const redeemColor = useRef(new Animated.Value(0)).current;
@@ -89,12 +100,14 @@ export function ItemDetailScreen({ route, navigation }: Props) {
 
   const loadItem = useCallback(async () => {
     try {
-      const [data, logs] = await Promise.all([
+      const [data, logs, plans] = await Promise.all([
         getOneTimeItemById(db, itemId),
         getMaintenanceLogsByItem(db, itemId),
+        getMaintenancePlansByItem(db, itemId),
       ]);
       setItem(data);
       setMaintenanceLogs(logs);
+      setMaintenancePlans(plans);
       if (data) {
         navigation.setOptions({ title: data.name });
       }
@@ -113,6 +126,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     alertConfirm('确认删除', `确定要删除“${item?.name}”吗？此操作不可撤销。`, async () => {
       await deleteEntityImageAsync(item?.image_uri);
       await deleteMaintenanceLogsByItem(db, itemId);
+      await deleteMaintenancePlansByItem(db, itemId);
       await deleteOneTimeItem(db, itemId);
       navigation.goBack();
     }, { confirmText: '删除', destructive: true });
@@ -286,6 +300,66 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     alertConfirm('删除维修记录', '确定要删除这条维修记录吗？', async () => {
       try {
         await deleteMaintenanceLog(db, logId);
+        await loadItem();
+      } catch (error) {
+        alertError('错误', error instanceof Error ? error.message : '删除失败');
+      }
+    }, { confirmText: '删除', destructive: true });
+  }
+
+  async function handleAddPlan() {
+    if (!item || planBusy) return;
+    if (!planTitle.trim()) {
+      alertError('提示', '请输入保养标题');
+      return;
+    }
+    const intervalNum = parseInt(planInterval, 10);
+    if (!Number.isFinite(intervalNum) || intervalNum <= 0) {
+      alertError('提示', '请输入有效的间隔天数（> 0）');
+      return;
+    }
+    if (planLastDate && planLastDate > getTodayString()) {
+      alertError('提示', '上次完成日期不能晚于今天');
+      return;
+    }
+
+    setPlanBusy(true);
+    try {
+      await createMaintenancePlan(db, {
+        item_id: itemId,
+        title: planTitle.trim(),
+        interval_days: intervalNum,
+        last_done_date: planLastDate || null,
+      });
+      setPlanModalVisible(false);
+      setPlanTitle('');
+      setPlanInterval('');
+      setPlanLastDate(getTodayString());
+      await loadItem();
+    } catch (error) {
+      alertError('错误', error instanceof Error ? error.message : '保存保养计划失败');
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  async function handleCompletePlan(planId: number) {
+    if (planBusy) return;
+    setPlanBusy(true);
+    try {
+      await markMaintenancePlanDone(db, planId, getTodayString());
+      await loadItem();
+    } catch (error) {
+      alertError('错误', error instanceof Error ? error.message : '更新失败');
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  async function handleDeletePlan(planId: number) {
+    alertConfirm('删除保养计划', '确定要删除这条保养计划吗？', async () => {
+      try {
+        await deleteMaintenancePlan(db, planId);
         await loadItem();
       } catch (error) {
         alertError('错误', error instanceof Error ? error.message : '删除失败');
@@ -830,6 +904,90 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         </View>
       )}
 
+      {!isUnredeemed && (
+        <View style={styles.planCard}>
+          <View style={styles.planHeader}>
+            <Text style={styles.planTitle}>🔁 保养计划</Text>
+            <TouchableOpacity
+              style={styles.planAddBtn}
+              onPress={() => {
+                setPlanTitle('');
+                setPlanInterval('');
+                setPlanLastDate(getTodayString());
+                setPlanModalVisible(true);
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.planAddBtnText}>+ 新增</Text>
+            </TouchableOpacity>
+          </View>
+          {maintenancePlans.length === 0 ? (
+            <Text style={styles.planEmpty}>
+              还没有保养计划。设定周期性保养可以提醒你按时维护资产。
+            </Text>
+          ) : (
+            <View style={styles.planList}>
+              {maintenancePlans.map(plan => {
+                const today = getTodayString();
+                const isDue =
+                  plan.enabled === 1 &&
+                  plan.next_due_date !== null &&
+                  plan.next_due_date <= today;
+                return (
+                  <View
+                    key={plan.id}
+                    style={[
+                      styles.planRow,
+                      isDue && styles.planRowOverdue,
+                    ]}
+                  >
+                    <View style={styles.planRowMain}>
+                      <View style={styles.planRowHeader}>
+                        <Text style={styles.planRowTitle} numberOfLines={1}>
+                          {plan.title}
+                        </Text>
+                        <View
+                          style={[
+                            styles.planStatusBadge,
+                            isDue ? styles.planStatusOverdue : styles.planStatusOk,
+                          ]}
+                        >
+                          <Text style={styles.planStatusText}>
+                            {plan.enabled === 1 ? (isDue ? '到期' : '正常') : '停用'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.planRowMeta}>
+                        间隔 {plan.interval_days} 天 · 上次{' '}
+                        {plan.last_done_date ? formatDate(plan.last_done_date) : '—'} · 下次{' '}
+                        {plan.next_due_date ? formatDate(plan.next_due_date) : '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.planRowActions}>
+                      <TouchableOpacity
+                        style={styles.planDoneBtn}
+                        onPress={() => handleCompletePlan(plan.id)}
+                        disabled={planBusy}
+                        activeOpacity={0.6}
+                      >
+                        <Text style={styles.planDoneBtnText}>完成</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.planDeleteBtn}
+                        onPress={() => handleDeletePlan(plan.id)}
+                        activeOpacity={0.6}
+                      >
+                        <Text style={styles.planDeleteBtnText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      )}
+
       <View style={styles.actions}>
         <BrutalButton
           title="📤 分享卡片"
@@ -1099,6 +1257,52 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               <BrutalButton
                 title="取消"
                 onPress={() => setMaintModalVisible(false)}
+                variant="outline"
+                size="md"
+                style={styles.modalBtn}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={planModalVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>新增保养计划</Text>
+            <Text style={styles.modalDesc}>
+              设置周期性保养计划，到期会高亮提醒。点击"完成"会自动更新下次到期日。
+            </Text>
+            <PixelInput
+              label="标题"
+              value={planTitle}
+              onChangeText={setPlanTitle}
+              placeholder="例如：换机油 / 滤芯清洁"
+            />
+            <PixelInput
+              label="间隔天数"
+              value={planInterval}
+              onChangeText={setPlanInterval}
+              placeholder="例如：90"
+              keyboardType="decimal-pad"
+            />
+            <DatePickerField
+              label="上次完成日"
+              value={planLastDate}
+              onChange={setPlanLastDate}
+            />
+            <View style={styles.modalActions}>
+              <BrutalButton
+                title="保存计划"
+                onPress={handleAddPlan}
+                loading={planBusy}
+                variant="primary"
+                size="md"
+                style={styles.modalBtn}
+              />
+              <BrutalButton
+                title="取消"
+                onPress={() => setPlanModalVisible(false)}
                 variant="outline"
                 size="md"
                 style={styles.modalBtn}
@@ -1675,5 +1879,135 @@ const createStyles = () => StyleSheet.create({
   },
   maintDescInput: {
     marginBottom: THEME.spacing.md,
+  },
+  planCard: {
+    backgroundColor: THEME.colors.surface,
+    ...THEME.pixelBorder,
+    ...THEME.pixelShadow,
+    padding: THEME.spacing.lg,
+    marginBottom: THEME.spacing.lg,
+  },
+  planHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: THEME.spacing.sm,
+  },
+  planTitle: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  planAddBtn: {
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xs,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.primary,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.primaryLight + '20',
+  },
+  planAddBtnText: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.primaryDark,
+  },
+  planEmpty: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
+  },
+  planList: {
+    gap: THEME.spacing.xs,
+  },
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.sm,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    borderRadius: 4,
+  },
+  planRowOverdue: {
+    borderWidth: 2,
+    borderColor: THEME.colors.danger,
+    backgroundColor: THEME.colors.dangerBg,
+  },
+  planRowMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planRowHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+    gap: THEME.spacing.xs,
+  },
+  planRowTitle: {
+    flex: 1,
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    marginRight: THEME.spacing.sm,
+  },
+  planStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+    borderWidth: 1,
+  },
+  planStatusOk: {
+    backgroundColor: THEME.colors.successBg,
+    borderColor: THEME.colors.success,
+  },
+  planStatusOverdue: {
+    backgroundColor: THEME.colors.dangerBg,
+    borderColor: THEME.colors.danger,
+  },
+  planStatusText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  planRowMeta: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+  },
+  planRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: THEME.spacing.sm,
+    gap: THEME.spacing.xs,
+  },
+  planDoneBtn: {
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xs,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.success,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.successBg,
+  },
+  planDoneBtnText: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.success,
+  },
+  planDeleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    backgroundColor: THEME.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  planDeleteBtnText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: THEME.colors.dangerDark,
+    lineHeight: 18,
   },
 });

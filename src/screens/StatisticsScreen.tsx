@@ -87,6 +87,96 @@ function formatPercent(value: number, total: number): string {
   return `${percent.toFixed(0)}%`;
 }
 
+/** 解析 YYYY-MM-DD 为本地日期，避免 UTC 偏移 */
+function parseISODateLocal(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, (month ?? 1) - 1, day ?? 1);
+}
+
+/**
+ * 计算指定自然年内每个分类的支出汇总（购置 + 分期 + 订阅 + 维修）。
+ * 用于"分类同比"卡片：分别对今年和去年调用，再比较差额。
+ */
+function computeYearlyCategorySpending(
+  items: OneTimeItem[],
+  subscriptions: Subscription[],
+  maintenanceLogs: MaintenanceLog[],
+  year: number,
+  resolveCategory: (categoryId: string) => CategoryInfo,
+): Array<{ categoryId: string; name: string; icon: string; amount: number }> {
+  const sums = new Map<string, number>();
+  const yearStartMonthIndex = year * 12;
+  const yearEndMonthIndex = year * 12 + 12;
+
+  const addToCategory = (categoryId: string, amount: number) => {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    sums.set(categoryId, (sums.get(categoryId) ?? 0) + amount);
+  };
+
+  for (const item of items) {
+    const categoryId = item.category ?? 'other';
+    const buyDate = parseISODateLocal(item.buy_date);
+    const buyMonthIndex = buyDate.getFullYear() * 12 + buyDate.getMonth();
+
+    // 当年购置支出（首付或全款）
+    if (buyDate.getFullYear() === year) {
+      const purchaseAmount = item.is_installment === 1
+        ? (item.down_payment ?? 0)
+        : item.total_price;
+      addToCategory(categoryId, purchaseAmount);
+    }
+
+    // 当年分期月供
+    if (
+      item.is_installment === 1 &&
+      (item.installment_months ?? 0) > 0 &&
+      (item.monthly_payment ?? 0) > 0
+    ) {
+      const installmentEndMonthIndex = buyMonthIndex + (item.installment_months ?? 0);
+      const overlapStart = Math.max(buyMonthIndex, yearStartMonthIndex);
+      const overlapEnd = Math.min(installmentEndMonthIndex, yearEndMonthIndex);
+      const overlapMonths = Math.max(0, overlapEnd - overlapStart);
+      addToCategory(categoryId, overlapMonths * (item.monthly_payment ?? 0));
+    }
+  }
+
+  // 订阅当年扣款
+  for (const sub of subscriptions) {
+    if (sub.status !== 'active') continue;
+    const startDate = parseISODateLocal(sub.start_date);
+    const startMonthIndex = startDate.getFullYear() * 12 + startDate.getMonth();
+    const stepMonths =
+      sub.billing_cycle === 'monthly' ? 1 : sub.billing_cycle === 'quarterly' ? 3 : 12;
+    const categoryId = sub.category ?? 'other';
+
+    for (let m = yearStartMonthIndex; m < yearEndMonthIndex; m += 1) {
+      if (m < startMonthIndex) continue;
+      if ((m - startMonthIndex) % stepMonths !== 0) continue;
+      addToCategory(categoryId, sub.cycle_price);
+    }
+  }
+
+  // 维修记录按关联物品的分类归集
+  const itemCategoryMap = new Map<number, string>();
+  for (const item of items) {
+    itemCategoryMap.set(item.id, item.category ?? 'other');
+  }
+
+  for (const log of maintenanceLogs) {
+    const logDate = parseISODateLocal(log.log_date);
+    if (logDate.getFullYear() !== year) continue;
+    const categoryId = itemCategoryMap.get(log.item_id) ?? 'other';
+    addToCategory(categoryId, log.cost);
+  }
+
+  return Array.from(sums.entries())
+    .map(([categoryId, amount]) => {
+      const info = resolveCategory(categoryId);
+      return { categoryId, name: info.name, icon: info.icon, amount };
+    })
+    .sort((a, b) => b.amount - a.amount);
+}
+
 function LegendList({
   series,
   total,
@@ -597,6 +687,123 @@ export function StatisticsScreen({}: Props) {
     return { rows, totalYearly, totalDaily };
   }, [subscriptions]);
 
+  /** 资产折旧曲线对比：TOP 5 在用资产（按总价降序，需有预期寿命）的折旧率 */
+  const depreciationComparison = useMemo(() => {
+    const rows = items
+      .filter(
+        item =>
+          item.status === 'active' &&
+          typeof item.expected_life_days === 'number' &&
+          item.expected_life_days > 0 &&
+          item.total_price > 0,
+      )
+      .map(item => {
+        const activeDays = calculateOneTimeItemActiveDays(item);
+        const currentValue = calculateDepreciatedValue(item, activeDays);
+        const depreciationRate =
+          item.total_price > 0
+            ? ((item.total_price - currentValue) / item.total_price) * 100
+            : 0;
+        return {
+          id: item.id,
+          name: item.name,
+          totalPrice: item.total_price,
+          currentValue,
+          depreciationRate: Math.max(0, Math.min(100, depreciationRate)),
+        };
+      })
+      .sort((a, b) => b.totalPrice - a.totalPrice)
+      .slice(0, 5);
+
+    return { rows };
+  }, [items]);
+
+  /** 月度支出热力图：最近 12 个月，按金额分档着色 */
+  const heatmapData = useMemo(() => {
+    const trend = calculateMonthlySpendingTrend(items, subscriptions, maintenanceLogs, 12);
+    const maxTotal = trend.reduce((max, row) => Math.max(max, row.total), 0);
+
+    type HeatLevel = 0 | 1 | 2 | 3 | 4;
+    const levelFor = (value: number): HeatLevel => {
+      if (value <= 0) return 0;
+      if (maxTotal <= 0) return 1;
+      const ratio = value / maxTotal;
+      if (ratio <= 0.25) return 1;
+      if (ratio <= 0.5) return 2;
+      if (ratio <= 0.75) return 3;
+      return 4;
+    };
+
+    const monthAbbr = (monthKey: string): string => {
+      const month = parseInt(monthKey.slice(5, 7), 10);
+      return `${month}月`;
+    };
+
+    const cells = trend.map(row => ({
+      key: row.monthKey,
+      label: monthAbbr(row.monthKey),
+      total: row.total,
+      level: levelFor(row.total),
+    }));
+
+    return { cells, maxTotal };
+  }, [items, subscriptions, maintenanceLogs]);
+
+  /** 分类支出同比：今年 vs 去年，每个分类一行 */
+  const categoryYoY = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const thisYearRows = computeYearlyCategorySpending(
+      items,
+      subscriptions,
+      maintenanceLogs,
+      currentYear,
+      resolveItemCategory,
+    );
+    const lastYearRows = computeYearlyCategorySpending(
+      items,
+      subscriptions,
+      maintenanceLogs,
+      currentYear - 1,
+      resolveItemCategory,
+    );
+
+    const thisYearMap = new Map<string, number>();
+    for (const row of thisYearRows) thisYearMap.set(row.categoryId, row.amount);
+    const lastYearMap = new Map<string, number>();
+    for (const row of lastYearRows) lastYearMap.set(row.categoryId, row.amount);
+
+    const allCategoryIds = new Set<string>([
+      ...thisYearRows.map(r => r.categoryId),
+      ...lastYearRows.map(r => r.categoryId),
+    ]);
+
+    const rows = Array.from(allCategoryIds)
+      .map(categoryId => {
+        const info = resolveItemCategory(categoryId);
+        const thisYear = thisYearMap.get(categoryId) ?? 0;
+        const lastYear = lastYearMap.get(categoryId) ?? 0;
+        const change = lastYear > 0 ? ((thisYear - lastYear) / lastYear) * 100 : null;
+        return {
+          categoryId,
+          name: info.name,
+          icon: info.icon,
+          thisYear,
+          lastYear,
+          change,
+        };
+      })
+      .filter(row => row.thisYear > 0 || row.lastYear > 0)
+      .sort((a, b) => b.thisYear + b.lastYear - (a.thisYear + a.lastYear));
+
+    const totalThisYear = rows.reduce((s, r) => s + r.thisYear, 0);
+    const totalLastYear = rows.reduce((s, r) => s + r.lastYear, 0);
+    const totalChange = totalLastYear > 0
+      ? ((totalThisYear - totalLastYear) / totalLastYear) * 100
+      : null;
+
+    return { rows, totalThisYear, totalLastYear, totalChange, currentYear };
+  }, [items, subscriptions, maintenanceLogs, resolveItemCategory]);
+
   /** 当前净资产（实时计算，用于和快照对比） */
   const currentNetWorth = useMemo(
     () =>
@@ -649,6 +856,22 @@ export function StatisticsScreen({}: Props) {
     }),
     [],
   );
+
+  const heatLevelColors: Record<number, { bg: string; border: string; text: string }> = {
+    0: { bg: THEME.colors.background, border: THEME.colors.border, text: THEME.colors.textLight },
+    1: { bg: THEME.colors.successBg, border: THEME.colors.success, text: THEME.colors.textPrimary },
+    2: { bg: THEME.colors.accent, border: THEME.colors.borderDark, text: THEME.colors.onPrimary },
+    3: { bg: THEME.colors.warning, border: THEME.colors.borderDark, text: THEME.colors.borderDark },
+    4: { bg: THEME.colors.danger, border: THEME.colors.dangerDark, text: THEME.colors.onPrimary },
+  };
+
+  const heatLevelLegend = [
+    { level: 0, label: '无支出' },
+    { level: 1, label: '低' },
+    { level: 2, label: '中' },
+    { level: 3, label: '高' },
+    { level: 4, label: '极高' },
+  ];
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -1353,6 +1576,214 @@ export function StatisticsScreen({}: Props) {
                     </Text>
                   </View>
                 ))}
+              </View>
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>📉 资产折旧曲线对比</Text>
+          <Text style={styles.subTitle}>
+            TOP 5 在用资产折旧率 · 按买入总价排序
+          </Text>
+          {depreciationComparison.rows.length === 0 ? (
+            <EmptyState message="暂无符合条件的资产，需为在用资产设置预期使用天数。" icon="📉" />
+          ) : (
+            <View style={styles.depCompareList}>
+              {depreciationComparison.rows.map(row => {
+                const rate = row.depreciationRate;
+                const barColor =
+                  rate < 30
+                    ? THEME.colors.success
+                    : rate <= 70
+                      ? THEME.colors.warning
+                      : THEME.colors.danger;
+                return (
+                  <View key={`dep-cmp-${row.id}`} style={styles.depCompareRow}>
+                    <View style={styles.depCompareHeader}>
+                      <Text style={styles.depCompareName} numberOfLines={1}>
+                        {row.name}
+                      </Text>
+                      <Text style={[styles.depCompareRate, { color: barColor }]}>
+                        -{rate.toFixed(0)}%
+                      </Text>
+                    </View>
+                    <View style={styles.depCompareBarTrack}>
+                      <View
+                        style={[
+                          styles.depCompareBarFill,
+                          {
+                            width: `${Math.max(rate, 2)}%`,
+                            backgroundColor: barColor,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <View style={styles.depCompareMeta}>
+                      <Text style={styles.depCompareMetaLabel}>现值</Text>
+                      <Text style={styles.depCompareMetaValue} numberOfLines={1}>
+                        {formatCurrency(row.currentValue)} / {formatCurrency(row.totalPrice)}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>🔥 月度支出热力图</Text>
+          <Text style={styles.subTitle}>
+            最近 12 个月支出分布 · 峰值 {formatCurrency(heatmapData.maxTotal)}
+          </Text>
+          {heatmapData.maxTotal <= 0 ? (
+            <EmptyState message="最近 12 个月暂无支出记录，添加资产或订阅后会出现热力图。" icon="🔥" />
+          ) : (
+            <>
+              <View style={styles.heatmapGrid}>
+                {[0, 1, 2, 3].map(rowIndex => (
+                  <View key={`heat-row-${rowIndex}`} style={styles.heatmapRow}>
+                    {heatmapData.cells
+                      .slice(rowIndex * 3, rowIndex * 3 + 3)
+                      .map(cell => {
+                        const colors = heatLevelColors[cell.level] ?? heatLevelColors[0];
+                        return (
+                          <View
+                            key={cell.key}
+                            style={[
+                              styles.heatmapCell,
+                              {
+                                backgroundColor: colors.bg,
+                                borderColor: colors.border,
+                              },
+                            ]}
+                          >
+                            <Text style={[styles.heatmapCellLabel, { color: colors.text }]}>
+                              {cell.label}
+                            </Text>
+                            <Text
+                              style={[styles.heatmapCellValue, { color: colors.text }]}
+                              numberOfLines={1}
+                            >
+                              {cell.total > 0 ? formatCurrency(cell.total) : '—'}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                  </View>
+                ))}
+              </View>
+              <View style={styles.heatmapLegend}>
+                {heatLevelLegend.map(item => {
+                  const colors = heatLevelColors[item.level] ?? heatLevelColors[0];
+                  return (
+                    <View key={`heat-legend-${item.level}`} style={styles.heatmapLegendItem}>
+                      <View
+                        style={[
+                          styles.heatmapLegendSwatch,
+                          {
+                            backgroundColor: colors.bg,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      />
+                      <Text style={styles.heatmapLegendText}>{item.label}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>📊 分类支出同比</Text>
+          <Text style={styles.subTitle}>
+            {categoryYoY.currentYear}年 {formatCurrency(categoryYoY.totalThisYear)} · {categoryYoY.currentYear - 1}年 {formatCurrency(categoryYoY.totalLastYear)}
+          </Text>
+          {categoryYoY.rows.length === 0 ? (
+            <EmptyState message="今年和去年暂无支出记录。" icon="📊" />
+          ) : (
+            <>
+              {categoryYoY.totalChange !== null && (
+                <View style={styles.yoyTotalRow}>
+                  <Text style={styles.yoyTotalLabel}>总支出同比</Text>
+                  <Text
+                    style={[
+                      styles.yoyTotalValue,
+                      {
+                        color:
+                          categoryYoY.totalChange > 0
+                            ? THEME.colors.dangerDark
+                            : categoryYoY.totalChange < 0
+                              ? THEME.colors.success
+                              : THEME.colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {categoryYoY.totalChange > 0
+                      ? '↑'
+                      : categoryYoY.totalChange < 0
+                        ? '↓'
+                        : '·'}
+                    {' '}
+                    {Math.abs(categoryYoY.totalChange).toFixed(1)}%
+                  </Text>
+                </View>
+              )}
+              <View style={styles.yoyList}>
+                {categoryYoY.rows.map(row => {
+                  const change = row.change;
+                  const isIncrease = change !== null && change > 0;
+                  const isDecrease = change !== null && change < 0;
+                  return (
+                    <View key={`yoy-${row.categoryId}`} style={styles.yoyRow}>
+                      <View style={styles.yoyCategory}>
+                        <Text style={styles.yoyIcon}>{row.icon}</Text>
+                        <Text style={styles.yoyName} numberOfLines={1}>
+                          {row.name}
+                        </Text>
+                      </View>
+                      <View style={styles.yoyAmounts}>
+                        <View style={styles.yoyAmountBlock}>
+                          <Text style={styles.yoyAmountLabel}>今年</Text>
+                          <Text style={styles.yoyAmountValue} numberOfLines={1}>
+                            {formatCurrency(row.thisYear)}
+                          </Text>
+                        </View>
+                        <View style={styles.yoyAmountBlock}>
+                          <Text style={styles.yoyAmountLabel}>去年</Text>
+                          <Text style={styles.yoyAmountValueMuted} numberOfLines={1}>
+                            {formatCurrency(row.lastYear)}
+                          </Text>
+                        </View>
+                        <View style={styles.yoyChangeBlock}>
+                          {change === null ? (
+                            <Text style={styles.yoyChangeNew}>新增</Text>
+                          ) : (
+                            <Text
+                              style={[
+                                styles.yoyChangeText,
+                                {
+                                  color: isIncrease
+                                    ? THEME.colors.dangerDark
+                                    : isDecrease
+                                      ? THEME.colors.success
+                                      : THEME.colors.textSecondary,
+                                },
+                              ]}
+                            >
+                              {isIncrease ? '↑' : isDecrease ? '↓' : '·'}
+                              {' '}
+                              {change !== 0 ? `${Math.abs(change).toFixed(0)}%` : '0%'}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             </>
           )}
@@ -2077,5 +2508,214 @@ const createStyles = () => StyleSheet.create({
     color: THEME.colors.dangerDark,
     textAlign: 'center',
     marginTop: THEME.spacing.xs,
+  },
+  depCompareList: {
+    alignSelf: 'stretch',
+    marginTop: THEME.spacing.sm,
+    gap: THEME.spacing.sm,
+  },
+  depCompareRow: {
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    gap: 6,
+  },
+  depCompareHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+  },
+  depCompareName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  depCompareRate: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+    minWidth: 48,
+    textAlign: 'right',
+  },
+  depCompareBarTrack: {
+    width: '100%',
+    height: 8,
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  depCompareBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  depCompareMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  depCompareMetaLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  depCompareMetaValue: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    textAlign: 'right',
+  },
+  heatmapGrid: {
+    alignSelf: 'stretch',
+    marginTop: THEME.spacing.sm,
+    marginBottom: THEME.spacing.md,
+    gap: 6,
+  },
+  heatmapRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  heatmapCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: THEME.spacing.sm,
+    borderWidth: 1.5,
+    borderRadius: THEME.borderRadius,
+    minHeight: 48,
+    gap: 2,
+  },
+  heatmapCellLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  heatmapCellValue: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  heatmapLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: THEME.spacing.sm,
+  },
+  heatmapLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  heatmapLegendSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+    borderWidth: 1.5,
+  },
+  heatmapLegendText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  yoyTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    marginBottom: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+  },
+  yoyTotalLabel: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.textSecondary,
+  },
+  yoyTotalValue: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  yoyList: {
+    alignSelf: 'stretch',
+    gap: THEME.spacing.sm,
+  },
+  yoyRow: {
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    gap: 6,
+  },
+  yoyCategory: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  yoyIcon: {
+    fontSize: 14,
+  },
+  yoyName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  yoyAmounts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+  },
+  yoyAmountBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  yoyAmountLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  yoyAmountValue: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  yoyAmountValueMuted: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textLight,
+  },
+  yoyChangeBlock: {
+    minWidth: 56,
+    alignItems: 'flex-end',
+  },
+  yoyChangeNew: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: THEME.colors.primary,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.primary,
+    borderRadius: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  yoyChangeText: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
   },
 });

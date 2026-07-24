@@ -31,6 +31,9 @@ const BACKUP_TABLES = [
   'Subscriptions',
   'StoredCards',
   'Categories',
+  'MaintenanceLogs',
+  'MaintenancePlans',
+  'NetWorthSnapshots',
   'AppPreferences',
   '_meta',
 ] as const;

@@ -8,7 +8,7 @@ interface TableColumnInfo {
 }
 
 /** 当前数据库结构版本号，备份/恢复时会用来校验兼容性。 */
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 async function getTableColumnNames(
   db: SQLiteDatabase,
@@ -145,6 +145,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       && userVersion !== 10
       && userVersion !== 11
       && userVersion !== 12
+      && userVersion !== 13
     ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
@@ -274,6 +275,25 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       workingVersion = 13;
     }
 
+    if (workingVersion === 13) {
+      await current.execAsync(`
+        CREATE TABLE IF NOT EXISTS MaintenancePlans (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          item_id         INTEGER NOT NULL,
+          title           TEXT    NOT NULL,
+          interval_days   INTEGER NOT NULL CHECK(interval_days > 0),
+          last_done_date  TEXT,
+          next_due_date   TEXT,
+          enabled         INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+          created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (item_id) REFERENCES OneTimeItems(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_maintenance_plans_item_id ON MaintenancePlans(item_id);
+        CREATE INDEX IF NOT EXISTS idx_maintenance_plans_next_due ON MaintenancePlans(next_due_date);
+      `);
+      workingVersion = 14;
+    }
+
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS OneTimeItems (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,6 +379,23 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       );
 
       CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_date ON NetWorthSnapshots(snapshot_date);
+    `);
+
+    await current.execAsync(`
+      CREATE TABLE IF NOT EXISTS MaintenancePlans (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id         INTEGER NOT NULL,
+        title           TEXT    NOT NULL,
+        interval_days   INTEGER NOT NULL CHECK(interval_days > 0),
+        last_done_date  TEXT,
+        next_due_date   TEXT,
+        enabled         INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+        created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (item_id) REFERENCES OneTimeItems(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_maintenance_plans_item_id ON MaintenancePlans(item_id);
+      CREATE INDEX IF NOT EXISTS idx_maintenance_plans_next_due ON MaintenancePlans(next_due_date);
     `);
 
     await current.execAsync(`

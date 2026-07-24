@@ -16,13 +16,30 @@ import * as FileSystem from 'expo-file-system/legacy';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../types';
-import { initDB, getPreference, setPreference } from '../database';
+import {
+  initDB,
+  getPreference,
+  setPreference,
+  getAllOneTimeItems,
+  getAllSubscriptions,
+  getAllStoredCards,
+  getAllActiveMaintenancePlans,
+} from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
+import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from '../i18n';
 import { BrutalButton } from '../components';
 import { THEME, THEME_LIST, type ThemeId } from '../utils/constants';
 import { deleteAllEntityImagesAsync } from '../utils/entityImages';
 import { alertConfirm, alertError, alertSuccess, showPixelAlert } from '../utils/pixelAlert';
+import {
+  NOTIFICATION_ENABLED_KEY,
+  requestNotificationPermissionsAsync,
+  cancelAllScheduledNotificationsAsync,
+  scheduleReminderNotificationsAsync,
+  getScheduledNotificationCountAsync,
+} from '../utils/notifications';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -135,6 +152,7 @@ export function SettingsScreen({ navigation }: Props) {
   const db = useSQLiteContext();
   const { refreshCategories } = useCategories();
   const { themeId, setThemeId } = useTheme();
+  const { t } = useTranslation();
   const styles = useMemo(() => createStyles(), [themeId]);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -143,10 +161,16 @@ export function SettingsScreen({ navigation }: Props) {
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDays, setReminderDays] = useState('30');
   const [monthlyBudget, setMonthlyBudget] = useState('');
+  const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [togglingNotification, setTogglingNotification] = useState(false);
+  const [appLanguage, setAppLanguage] = useState<AppLanguage>(
+    (i18n.language as AppLanguage) || 'zh-CN',
+  );
 
   const REMINDER_ENABLED_KEY = 'reminder_enabled';
   const REMINDER_DAYS_KEY = 'reminder_days';
   const MONTHLY_BUDGET_KEY = 'monthly_budget';
+  const APP_LANGUAGE_KEY = 'app_language';
 
   const currentVersion = useMemo(() => {
     const version = Constants.expoConfig?.version;
@@ -181,14 +205,21 @@ export function SettingsScreen({ navigation }: Props) {
 
   const loadReminderPrefs = useCallback(async () => {
     try {
-      const [enabled, days, budget] = await Promise.all([
+      const [enabled, days, budget, lang, notifEnabled] = await Promise.all([
         getPreference(db, REMINDER_ENABLED_KEY),
         getPreference(db, REMINDER_DAYS_KEY),
         getPreference(db, MONTHLY_BUDGET_KEY),
+        getPreference(db, APP_LANGUAGE_KEY),
+        getPreference(db, NOTIFICATION_ENABLED_KEY),
       ]);
       if (enabled !== null) setReminderEnabled(enabled === '1');
       if (days !== null && /^\d+$/.test(days)) setReminderDays(days);
       if (budget !== null && /^\d+(\.\d+)?$/.test(budget)) setMonthlyBudget(budget);
+      if (notifEnabled !== null) setNotificationEnabled(notifEnabled === '1');
+      if (lang === 'zh-CN' || lang === 'en-US') {
+        setAppLanguage(lang);
+        void i18n.changeLanguage(lang);
+      }
     } catch (error) {
       console.error('加载提醒偏好失败', error);
     }
@@ -237,6 +268,76 @@ export function SettingsScreen({ navigation }: Props) {
       console.error('保存提醒天数失败', error);
     });
   }, [db, reminderDays]);
+
+  const handleToggleNotification = useCallback(
+    async (next: boolean) => {
+      if (togglingNotification) return;
+
+      if (!next) {
+        try {
+          await cancelAllScheduledNotificationsAsync();
+        } catch {
+          // 取消失败不影响关闭开关。
+        }
+        setNotificationEnabled(false);
+        void setPreference(db, NOTIFICATION_ENABLED_KEY, '0').catch(error => {
+          console.error('保存通知开关失败', error);
+        });
+        return;
+      }
+
+      setTogglingNotification(true);
+      try {
+        const granted = await requestNotificationPermissionsAsync();
+        if (!granted) {
+          alertError(
+            '无法开启通知',
+            '未获得通知权限，请在系统设置中允许通知后重试。',
+          );
+          return;
+        }
+
+        const [items, subscriptions, storedCards, maintenancePlans] = await Promise.all([
+          getAllOneTimeItems(db),
+          getAllSubscriptions(db),
+          getAllStoredCards(db),
+          getAllActiveMaintenancePlans(db),
+        ]);
+        const advanceDays = parseInt(reminderDays, 10) || 30;
+        await scheduleReminderNotificationsAsync({
+          items,
+          subscriptions,
+          storedCards,
+          maintenancePlans,
+          advanceDays,
+        });
+        const count = await getScheduledNotificationCountAsync();
+        setNotificationEnabled(true);
+        await setPreference(db, NOTIFICATION_ENABLED_KEY, '1');
+        alertSuccess('通知已开启', `已调度 ${count} 条到期提醒，将在到期日推送。`);
+      } catch (error) {
+        alertError(
+          '开启通知失败',
+          error instanceof Error ? error.message : '请重试',
+        );
+      } finally {
+        setTogglingNotification(false);
+      }
+    },
+    [db, togglingNotification, reminderDays],
+  );
+
+  const handleLanguageChange = useCallback(
+    (lang: AppLanguage) => {
+      if (lang === appLanguage) return;
+      setAppLanguage(lang);
+      void i18n.changeLanguage(lang);
+      void setPreference(db, APP_LANGUAGE_KEY, lang).catch(error => {
+        console.error('保存语言偏好失败', error);
+      });
+    },
+    [appLanguage, db],
+  );
 
   async function handleCleanCache() {
     if (cacheCleaning) return;
@@ -402,16 +503,15 @@ export function SettingsScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <BrutalCard title="常规设置" titleColor={THEME.colors.primary}>
-          <SettingRow title="分类管理" onPress={() => navigation.navigate('Categories')} />
-          <SettingRow title="备份与恢复" onPress={() => navigation.navigate('Backup')} />
-          <SettingRow title="语言设置" value="简体中文" showChevron={false} />
-          <SettingRow title="当前版本" value={currentVersion} showChevron={false} last />
+        <BrutalCard title={t('settings.general')} titleColor={THEME.colors.primary}>
+          <SettingRow title={t('settings.categories')} onPress={() => navigation.navigate('Categories')} />
+          <SettingRow title={t('settings.backup')} onPress={() => navigation.navigate('Backup')} />
+          <SettingRow title={t('settings.version')} value={currentVersion} showChevron={false} last />
         </BrutalCard>
 
-        <BrutalCard title="界面主题" titleColor={THEME.colors.primaryLight}>
+        <BrutalCard title={t('settings.theme')} titleColor={THEME.colors.primaryLight}>
           <Text style={styles.themePickerHint}>
-            选择你喜欢的配色方案，切换后立即生效并自动保存
+            {t('settings.theme_hint')}
           </Text>
           <View style={styles.themeGrid}>
             {THEME_LIST.map(theme => {
@@ -477,12 +577,40 @@ export function SettingsScreen({ navigation }: Props) {
           </View>
         </BrutalCard>
 
-        <BrutalCard title="提醒设置" titleColor={THEME.colors.accent}>
+        <BrutalCard title={t('settings.language')} titleColor={THEME.colors.primaryLight}>
+          <View style={styles.langGrid}>
+            {SUPPORTED_LANGUAGES.map(lang => {
+              const isActive = lang.id === appLanguage;
+              return (
+                <TouchableOpacity
+                  key={lang.id}
+                  style={[
+                    styles.langCard,
+                    isActive && styles.langCardActive,
+                  ]}
+                  onPress={() => handleLanguageChange(lang.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.langName}>{lang.nativeName}</Text>
+                  {isActive ? (
+                    <View style={styles.langCheckBadge}>
+                      <Text style={styles.langCheckText}>✓</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.langCheckBadgePlaceholder} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </BrutalCard>
+
+        <BrutalCard title={t('settings.reminders')} titleColor={THEME.colors.accent}>
           <View style={styles.row}>
             <View style={styles.reminderLabelBox}>
-              <Text style={styles.rowTitle}>应用内到期提醒</Text>
+              <Text style={styles.rowTitle}>{t('settings.in_app_reminder')}</Text>
               <Text style={styles.reminderHint}>
-                控制首页「⏰ 到期提醒」卡片的显示
+                {t('settings.in_app_reminder_hint')}
               </Text>
             </View>
             <Switch
@@ -493,11 +621,27 @@ export function SettingsScreen({ navigation }: Props) {
               ios_backgroundColor={THEME.colors.border}
             />
           </View>
+          <View style={styles.row}>
+            <View style={styles.reminderLabelBox}>
+              <Text style={styles.rowTitle}>本地推送通知</Text>
+              <Text style={styles.reminderHint}>
+                开启后将在到期前主动推送通知提醒
+              </Text>
+            </View>
+            <Switch
+              value={notificationEnabled}
+              onValueChange={v => void handleToggleNotification(v)}
+              disabled={togglingNotification}
+              trackColor={{ false: THEME.colors.border, true: THEME.colors.accent }}
+              thumbColor={THEME.colors.surface}
+              ios_backgroundColor={THEME.colors.border}
+            />
+          </View>
           <View style={[styles.row, styles.rowLast]}>
             <View style={styles.reminderLabelBox}>
-              <Text style={styles.rowTitle}>提前提醒天数</Text>
+              <Text style={styles.rowTitle}>{t('settings.advance_days')}</Text>
               <Text style={styles.reminderHint}>
-                保修/寿命到期前的预警阈值（1-365）
+                {t('settings.advance_days_hint')}
               </Text>
             </View>
             <View style={styles.reminderDaysInputBox}>
@@ -508,24 +652,24 @@ export function SettingsScreen({ navigation }: Props) {
                 keyboardType="numeric"
                 selectTextOnFocus
                 style={styles.reminderDaysInput}
-                editable={reminderEnabled}
+                editable={reminderEnabled || notificationEnabled}
               />
-              <Text style={styles.reminderDaysSuffix}>天</Text>
+              <Text style={styles.reminderDaysSuffix}>{t('common.days')}</Text>
             </View>
           </View>
           {!reminderEnabled && (
             <Text style={styles.reminderDisabledHint}>
-              ⚠️ 提醒已关闭，首页将不再显示到期卡片
+              {t('settings.reminder_disabled_hint')}
             </Text>
           )}
         </BrutalCard>
 
-        <BrutalCard title="月度预算" titleColor={THEME.colors.primaryLight}>
+        <BrutalCard title={t('settings.monthly_budget')} titleColor={THEME.colors.primaryLight}>
           <View style={[styles.row, styles.rowLast]}>
             <View style={styles.reminderLabelBox}>
-              <Text style={styles.rowTitle}>每月支出预算</Text>
+              <Text style={styles.rowTitle}>{t('settings.monthly_budget')}</Text>
               <Text style={styles.reminderHint}>
-                设置后，首页会显示本月已花费 vs 预算的进度条
+                {t('settings.monthly_budget_hint')}
               </Text>
             </View>
             <View style={styles.reminderDaysInputBox}>
@@ -538,12 +682,12 @@ export function SettingsScreen({ navigation }: Props) {
                 placeholder="0"
                 style={styles.reminderDaysInput}
               />
-              <Text style={styles.reminderDaysSuffix}>元</Text>
+              <Text style={styles.reminderDaysSuffix}>{t('common.yuan')}</Text>
             </View>
           </View>
           {monthlyBudget === '' && (
             <Text style={styles.reminderDisabledHint}>
-              💡 未设置预算时，首页不显示预算进度卡片
+              {t('settings.monthly_budget_empty_hint')}
             </Text>
           )}
         </BrutalCard>
@@ -581,9 +725,9 @@ export function SettingsScreen({ navigation }: Props) {
           </Text>
         </BrutalCard>
 
-        <BrutalCard title="关于" titleColor={THEME.colors.warning}>
+        <BrutalCard title={t('settings.about')} titleColor={THEME.colors.warning}>
           <SettingRow title="应用名称" value={APP_NAME} showChevron={false} />
-          <SettingRow title="当前版本" value={currentVersion} showChevron={false} />
+          <SettingRow title={t('settings.version')} value={currentVersion} showChevron={false} />
           <SettingRow
             title="关于 DayValue"
             onPress={() => navigation.navigate('About')}
@@ -811,5 +955,52 @@ const createStyles = () => StyleSheet.create({
     color: THEME.colors.onPrimary,
     fontSize: 12,
     fontWeight: '900',
+  },
+  langGrid: {
+    gap: THEME.spacing.sm,
+  },
+  langCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: THEME.spacing.md,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 2,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+  },
+  langCardActive: {
+    borderColor: THEME.colors.primary,
+    backgroundColor: THEME.colors.surface,
+    ...THEME.pixelShadow,
+  },
+  langName: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  langCheckBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.primary,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  langCheckText: {
+    color: THEME.colors.onPrimary,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  langCheckBadgePlaceholder: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: THEME.colors.border,
+    backgroundColor: 'transparent',
   },
 });

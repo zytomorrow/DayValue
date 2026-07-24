@@ -12,16 +12,25 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { MaintenanceLog, RootStackParamList, OneTimeItem, Subscription, StoredCard } from '../types';
+import type {
+  MaintenanceLog,
+  MaintenancePlan,
+  RootStackParamList,
+  OneTimeItem,
+  Subscription,
+  StoredCard,
+} from '../types';
 import {
   getAllOneTimeItems,
   getAllSubscriptions,
   getAllStoredCards,
   getAllMaintenanceLogs,
+  getAllActiveMaintenancePlans,
   getPreference,
   setPreference,
   redeemOneTimeItem,
 } from '../database';
+import { generateSuggestions, type Suggestion } from '../utils/suggestions';
 import {
   calculateDailyCost,
   calculateSubscriptionDailyCost,
@@ -282,6 +291,7 @@ export function DashboardScreen({ navigation }: Props) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
+  const [maintenancePlans, setMaintenancePlans] = useState<MaintenancePlan[]>([]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
@@ -312,16 +322,18 @@ export function DashboardScreen({ navigation }: Props) {
 
   const loadData = useCallback(async () => {
     try {
-      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs] = await Promise.all([
+      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs, nextPlans] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
         getAllMaintenanceLogs(db),
+        getAllActiveMaintenancePlans(db),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
       setMaintenanceLogs(nextLogs);
+      setMaintenancePlans(nextPlans);
     } catch (error) {
       console.error('加载首页数据失败', error);
     }
@@ -748,6 +760,33 @@ export function DashboardScreen({ navigation }: Props) {
       ratio >= 100 ? 'over' : ratio >= 80 ? 'warning' : 'safe';
     return { spent, budget: monthlyBudget, ratio, remaining, status, breakdown: currentMonth };
   }, [items, subscriptions, maintenanceLogs, monthlyBudget]);
+
+  const suggestions = useMemo(
+    () => generateSuggestions({ items, subscriptions, storedCards, maintenanceLogs, maintenancePlans }),
+    [items, subscriptions, storedCards, maintenanceLogs, maintenancePlans],
+  );
+
+  const handlePressSuggestion = useCallback(
+    (suggestion: Suggestion) => {
+      if (!suggestion.entityId || !suggestion.entityType) return;
+      if (suggestion.entityType === 'item') {
+        navigation.navigate('ItemDetail', { itemId: suggestion.entityId });
+      } else if (suggestion.entityType === 'subscription') {
+        navigation.navigate('SubscriptionDetail', { subscriptionId: suggestion.entityId });
+      } else if (suggestion.entityType === 'stored_card') {
+        navigation.navigate('AddEditStoredCard', { storedCardId: suggestion.entityId });
+      }
+    },
+    [navigation],
+  );
+
+  const renderSuggestionImpactLabel = useCallback((suggestion: Suggestion): string => {
+    if (suggestion.impact === null || suggestion.impact === undefined) return '';
+    if (suggestion.impact >= 0) {
+      return `可省 ${formatCurrency(suggestion.impact)}`;
+    }
+    return `潜在损失 ${formatCurrency(Math.abs(suggestion.impact))}`;
+  }, []);
 
   const assetSortSummary = useMemo(() => {
     return getSortSummary(
@@ -1533,6 +1572,106 @@ export function DashboardScreen({ navigation }: Props) {
           </View>
         )}
 
+        <View style={styles.quickAccessRow}>
+          <TouchableOpacity
+            style={styles.quickAccessBtn}
+            onPress={() => navigation.navigate('AnnualReport')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.quickAccessEmoji}>📊</Text>
+            <Text style={styles.quickAccessLabel}>年度回顾</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickAccessBtn}
+            onPress={() => navigation.navigate('Calendar')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.quickAccessEmoji}>📅</Text>
+            <Text style={styles.quickAccessLabel}>资产日历</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickAccessBtn}
+            onPress={() => navigation.navigate('Statistics')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.quickAccessEmoji}>📈</Text>
+            <Text style={styles.quickAccessLabel}>统计详情</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickAccessBtn}
+            onPress={() => navigation.navigate('Cabinet')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.quickAccessEmoji}>🗄️</Text>
+            <Text style={styles.quickAccessLabel}>陈列柜</Text>
+          </TouchableOpacity>
+        </View>
+
+        {reminderEnabled && suggestions.length > 0 && (
+          <View style={styles.suggestionSection}>
+            <Text style={styles.suggestionSectionTitle}>💡 智能建议</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.suggestionScroll}
+            >
+              {suggestions.map(suggestion => {
+                const impactLabel = renderSuggestionImpactLabel(suggestion);
+                return (
+                  <TouchableOpacity
+                    key={suggestion.id}
+                    style={[
+                      styles.suggestionCard,
+                      suggestion.priority === 'high' && styles.suggestionCardHigh,
+                      suggestion.priority === 'medium' && styles.suggestionCardMedium,
+                      suggestion.priority === 'low' && styles.suggestionCardLow,
+                    ]}
+                    onPress={() => handlePressSuggestion(suggestion)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.suggestionCardHeader}>
+                      <Text style={styles.suggestionEmoji}>{suggestion.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.suggestionPriorityBadge,
+                          suggestion.priority === 'high' && styles.suggestionPriorityHigh,
+                          suggestion.priority === 'medium' && styles.suggestionPriorityMedium,
+                          suggestion.priority === 'low' && styles.suggestionPriorityLow,
+                        ]}
+                      >
+                        {suggestion.priority === 'high'
+                          ? '高'
+                          : suggestion.priority === 'medium'
+                            ? '中'
+                            : '低'}
+                      </Text>
+                    </View>
+                    <Text style={styles.suggestionTitle} numberOfLines={1}>
+                      {suggestion.title}
+                    </Text>
+                    <Text style={styles.suggestionDesc} numberOfLines={3}>
+                      {suggestion.description}
+                    </Text>
+                    {impactLabel ? (
+                      <Text
+                        style={[
+                          styles.suggestionImpact,
+                          (suggestion.impact ?? 0) >= 0
+                            ? styles.suggestionImpactPositive
+                            : styles.suggestionImpactNegative,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {impactLabel}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         <View style={styles.tabs}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'assets' && styles.tabActive]}
@@ -1897,6 +2036,134 @@ const createStyles = () => StyleSheet.create({
   budgetFooterValue: {
     color: THEME.colors.primaryDark,
     fontWeight: '900',
+  },
+  suggestionSection: {
+    marginTop: THEME.spacing.md,
+    marginBottom: THEME.spacing.xs,
+  },
+  quickAccessRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: THEME.spacing.lg,
+    marginTop: THEME.spacing.md,
+    marginBottom: THEME.spacing.sm,
+    gap: THEME.spacing.sm,
+  },
+  quickAccessBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: THEME.borderRadius,
+    gap: 4,
+    ...THEME.pixelShadow,
+  },
+  quickAccessEmoji: {
+    fontSize: 20,
+  },
+  quickAccessLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    textAlign: 'center',
+  },
+  suggestionSectionTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+    paddingHorizontal: THEME.spacing.lg,
+    marginBottom: THEME.spacing.sm,
+  },
+  suggestionScroll: {
+    paddingHorizontal: THEME.spacing.lg,
+    gap: THEME.spacing.md,
+    paddingRight: THEME.spacing.xl,
+  },
+  suggestionCard: {
+    width: 220,
+    padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: THEME.borderRadius,
+    ...THEME.pixelShadow,
+  },
+  suggestionCardHigh: {
+    borderColor: THEME.colors.dangerDark,
+    backgroundColor: THEME.colors.dangerBg,
+  },
+  suggestionCardMedium: {
+    borderColor: THEME.colors.warning,
+    backgroundColor: THEME.colors.warningBg,
+  },
+  suggestionCardLow: {
+    borderColor: THEME.colors.border,
+    backgroundColor: THEME.colors.surface,
+  },
+  suggestionCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: THEME.spacing.xs,
+  },
+  suggestionEmoji: {
+    fontSize: 20,
+  },
+  suggestionPriorityBadge: {
+    fontSize: 10,
+    fontWeight: '900',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+  },
+  suggestionPriorityHigh: {
+    color: THEME.colors.surface,
+    backgroundColor: THEME.colors.dangerDark,
+    borderColor: THEME.colors.dangerDark,
+  },
+  suggestionPriorityMedium: {
+    color: THEME.colors.surface,
+    backgroundColor: THEME.colors.warning,
+    borderColor: THEME.colors.warning,
+  },
+  suggestionPriorityLow: {
+    color: THEME.colors.textSecondary,
+    backgroundColor: THEME.colors.background,
+    borderColor: THEME.colors.border,
+  },
+  suggestionTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+    marginBottom: 4,
+  },
+  suggestionDesc: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    lineHeight: 16,
+    marginBottom: THEME.spacing.xs,
+  },
+  suggestionImpact: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  suggestionImpactPositive: {
+    color: THEME.colors.success,
+    backgroundColor: THEME.colors.successBg,
+  },
+  suggestionImpactNegative: {
+    color: THEME.colors.dangerDark,
+    backgroundColor: THEME.colors.dangerBg,
   },
   tabs: {
     flexDirection: 'row',
