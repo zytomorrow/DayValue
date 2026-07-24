@@ -23,15 +23,21 @@ function detectInitialLanguage(): AppLanguage {
   }
 }
 
-i18n.use(initReactI18next).init({
-  resources: {
-    'zh-CN': { translation: zhCN },
-    'en-US': { translation: enUS },
-  },
-  lng: detectInitialLanguage(),
-  fallbackLng: 'zh-CN',
-  interpolation: { escapeValue: false },
-});
+try {
+  i18n.use(initReactI18next).init({
+    resources: {
+      'zh-CN': { translation: zhCN },
+      'en-US': { translation: enUS },
+    },
+    lng: detectInitialLanguage(),
+    fallbackLng: 'zh-CN',
+    interpolation: { escapeValue: false },
+  });
+} catch (error) {
+  // i18next / react-i18next 初始化失败时不应阻塞应用启动。
+  // eslint-disable-next-line no-console
+  console.warn('i18n 初始化失败，已跳过', error);
+}
 
 export default i18n;
 export { detectInitialLanguage };

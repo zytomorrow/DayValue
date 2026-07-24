@@ -11,7 +11,7 @@ import './src/i18n';
 import { initDB } from './src/database';
 import { CategoriesProvider } from './src/contexts/CategoriesContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
-import { CustomSplashScreen, PixelAlertRoot } from './src/components';
+import { CustomSplashScreen, ErrorBoundary, PixelAlertRoot } from './src/components';
 import {
   DashboardScreen,
   SettingsScreen,
@@ -175,9 +175,19 @@ export default function App() {
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <React.Suspense fallback={<LoadingFallback />}>
-        <SQLiteProvider databaseName="dayvalue.db" onInit={initDB}>
+        <SQLiteProvider
+          databaseName="dayvalue.db"
+          onInit={initDB}
+          onError={(error) => {
+            // 数据库初始化失败时，把错误塞进一个渲染期 throw，
+            // 让外层 ErrorBoundary 捕获并展示，避免应用直接闪退到黑屏。
+            // eslint-disable-next-line no-console
+            console.error('数据库初始化失败:', error);
+            throw error;
+          }}
+        >
           <ThemeProvider>
             <CategoriesProvider>
               <SafeAreaProvider>
@@ -195,7 +205,7 @@ export default function App() {
       {!splashDone && (
         <CustomSplashScreen onAnimationEnd={() => setSplashDone(true)} />
       )}
-    </>
+    </ErrorBoundary>
   );
 }
 

@@ -121,12 +121,19 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
     const userVersion = versionRow?.user_version ?? 0;
 
     if (__DEV__ && userVersion !== SCHEMA_VERSION) {
+      // 开发模式下版本不一致时直接重置所有业务表，
+      // 避免旧 schema 残留导致后续 CREATE TABLE IF NOT EXISTS 不生效、
+      // 进而让 SELECT 缺列、迁移跳过等问题。
       await current.execAsync(`
         DROP TABLE IF EXISTS OneTimeItems;
         DROP TABLE IF EXISTS Subscriptions;
         DROP TABLE IF EXISTS StoredCards;
         DROP TABLE IF EXISTS Categories;
         DROP TABLE IF EXISTS AppPreferences;
+        DROP TABLE IF EXISTS Accessories;
+        DROP TABLE IF EXISTS MaintenanceLogs;
+        DROP TABLE IF EXISTS MaintenancePlans;
+        DROP TABLE IF EXISTS NetWorthSnapshots;
         DROP TABLE IF EXISTS one_time_items;
         DROP TABLE IF EXISTS subscriptions;
         DROP TABLE IF EXISTS stored_cards;
@@ -489,6 +496,14 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
     await ensureColumn(current, 'OneTimeItems', 'notes', 'TEXT');
     await ensureColumn(current, 'OneTimeItems', 'purchase_channel', 'TEXT');
     await ensureColumn(current, 'OneTimeItems', 'serial_number', 'TEXT');
+    // Accessories.entity_type 兜底：历史上 v14 表无该列、v15 迁移可能被跳过
+    // （dev 模式重置或跨版本升级路径异常时），此处再保险一次。
+    await ensureColumn(
+      current,
+      'Accessories',
+      'entity_type',
+      `TEXT NOT NULL DEFAULT 'item' CHECK(entity_type IN ('item', 'subscription', 'stored_card'))`,
+    );
 
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS Categories (

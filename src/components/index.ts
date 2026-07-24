@@ -38,3 +38,4 @@ export type { PixelAlertButton, PixelAlertProps } from './PixelAlert';
 export { PixelAlertRoot } from './PixelAlertRoot';
 export { SearchBar } from './SearchBar';
 export { AccessorySection } from './AccessorySection';
+export { ErrorBoundary } from './ErrorBoundary';
