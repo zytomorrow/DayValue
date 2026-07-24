@@ -1083,7 +1083,8 @@ export function DashboardScreen({ navigation }: Props) {
     const isSearching = assetSearch.trim().length > 0;
 
     return (
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+      <>
+      <View style={styles.stickyTools}>
         {hasAnyAsset && (
           <SearchBar
             value={assetSearch}
@@ -1127,7 +1128,9 @@ export function DashboardScreen({ navigation }: Props) {
             })}
           </View>
         )}
+      </View>
 
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
         {reminderEnabled && hasReminders && !isAssetFiltered && !isSearching && (
           <View style={styles.reminderCard}>
             <Text style={styles.reminderTitle}>⏰ 到期提醒</Text>
@@ -1306,6 +1309,7 @@ export function DashboardScreen({ navigation }: Props) {
           </>
         )}
       </ScrollView>
+      </>
     );
   };
 
@@ -1337,7 +1341,8 @@ export function DashboardScreen({ navigation }: Props) {
     };
 
     return (
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+      <>
+      <View style={styles.stickyTools}>
         {hasDebtContent && (
           <SearchBar
             value={debtSearch}
@@ -1345,7 +1350,9 @@ export function DashboardScreen({ navigation }: Props) {
             placeholder="搜索分期 / 订阅..."
           />
         )}
+      </View>
 
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
         {redeemableUnredeemedItems.length > 0 && (
           <TouchableOpacity
             style={styles.batchRedeemBanner}
@@ -1388,6 +1395,7 @@ export function DashboardScreen({ navigation }: Props) {
           <Text style={styles.sectionEmptyHint}>暂无持续订阅</Text>
         ) : null}
       </ScrollView>
+      </>
     );
   };
 
@@ -1400,7 +1408,8 @@ export function DashboardScreen({ navigation }: Props) {
     const isStoredCardSearching = storedCardSearch.trim().length > 0;
 
     return (
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+      <>
+      <View style={styles.stickyTools}>
         {hasAnyCard && (
           <SearchBar
             value={storedCardSearch}
@@ -1408,7 +1417,9 @@ export function DashboardScreen({ navigation }: Props) {
             placeholder="搜索卡包..."
           />
         )}
+      </View>
 
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
         {hasDormantCardReminders && !isStoredCardSearching && (
           <View style={styles.dormantCardBanner}>
             <Text style={styles.dormantCardBannerTitle}>
@@ -1489,6 +1500,7 @@ export function DashboardScreen({ navigation }: Props) {
           </>
         )}
       </ScrollView>
+      </>
     );
   };
 
@@ -1910,6 +1922,15 @@ const createStyles = () => StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  // 固定吸顶的搜索 + 筛选工具区，不随列表滚动
+  stickyTools: {
+    paddingHorizontal: THEME.spacing.lg,
+    paddingTop: 4,
+    paddingBottom: 2,
+    backgroundColor: THEME.colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.colors.border,
   },
   budgetCard: {
     marginHorizontal: THEME.spacing.lg,
@@ -2370,13 +2391,13 @@ const createStyles = () => StyleSheet.create({
   warrantyFilterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: THEME.spacing.sm,
+    gap: 4,
+    marginBottom: 2,
   },
   warrantyFilterChip: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: THEME.borderRadius,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 4,
     borderWidth: 1.5,
     borderColor: THEME.colors.border,
     backgroundColor: THEME.colors.surface,
