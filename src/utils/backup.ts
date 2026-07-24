@@ -33,6 +33,7 @@ const BACKUP_TABLES = [
   'Categories',
   'MaintenanceLogs',
   'MaintenancePlans',
+  'Accessories',
   'NetWorthSnapshots',
   'AppPreferences',
   '_meta',

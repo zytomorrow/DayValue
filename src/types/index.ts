@@ -86,6 +86,35 @@ export interface MaintenancePlanInput {
   enabled?: number;
 }
 
+/** 配件状态 */
+export type AccessoryStatus = 'in_use' | 'lost' | 'damaged';
+
+/** 资产配件（Accessories 表），如游戏机手柄、电脑键盘等 */
+export interface Accessory {
+  id: number;
+  item_id: number;
+  name: string;
+  /** 数量（≥1） */
+  quantity: number;
+  /** 单价（≥0） */
+  unit_price: number;
+  /** 购买日期（YYYY-MM-DD，可选） */
+  buy_date: string | null;
+  status: AccessoryStatus;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface AccessoryInput {
+  item_id: number;
+  name: string;
+  quantity?: number;
+  unit_price?: number;
+  buy_date?: string | null;
+  status?: AccessoryStatus;
+  notes?: string | null;
+}
+
 /** 净资产快照（NetWorthSnapshots 表） */
 export interface NetWorthSnapshot {
   id: number;

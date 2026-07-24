@@ -8,7 +8,7 @@ interface TableColumnInfo {
 }
 
 /** 当前数据库结构版本号，备份/恢复时会用来校验兼容性。 */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 async function getTableColumnNames(
   db: SQLiteDatabase,
@@ -146,6 +146,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       && userVersion !== 11
       && userVersion !== 12
       && userVersion !== 13
+      && userVersion !== 14
     ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
@@ -294,6 +295,25 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       workingVersion = 14;
     }
 
+    if (workingVersion === 14) {
+      await current.execAsync(`
+        CREATE TABLE IF NOT EXISTS Accessories (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          item_id     INTEGER NOT NULL,
+          name        TEXT    NOT NULL,
+          quantity    INTEGER NOT NULL DEFAULT 1 CHECK(quantity >= 1),
+          unit_price  REAL    NOT NULL DEFAULT 0 CHECK(unit_price >= 0),
+          buy_date    TEXT,
+          status      TEXT    NOT NULL DEFAULT 'in_use' CHECK(status IN ('in_use', 'lost', 'damaged')),
+          notes       TEXT,
+          created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (item_id) REFERENCES OneTimeItems(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_accessories_item_id ON Accessories(item_id);
+      `);
+      workingVersion = 15;
+    }
+
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS OneTimeItems (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -396,6 +416,23 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
 
       CREATE INDEX IF NOT EXISTS idx_maintenance_plans_item_id ON MaintenancePlans(item_id);
       CREATE INDEX IF NOT EXISTS idx_maintenance_plans_next_due ON MaintenancePlans(next_due_date);
+    `);
+
+    await current.execAsync(`
+      CREATE TABLE IF NOT EXISTS Accessories (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id     INTEGER NOT NULL,
+        name        TEXT    NOT NULL,
+        quantity    INTEGER NOT NULL DEFAULT 1 CHECK(quantity >= 1),
+        unit_price  REAL    NOT NULL DEFAULT 0 CHECK(unit_price >= 0),
+        buy_date    TEXT,
+        status      TEXT    NOT NULL DEFAULT 'in_use' CHECK(status IN ('in_use', 'lost', 'damaged')),
+        notes       TEXT,
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (item_id) REFERENCES OneTimeItems(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_accessories_item_id ON Accessories(item_id);
     `);
 
     await current.execAsync(`

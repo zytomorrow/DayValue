@@ -13,15 +13,19 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { MaintenanceLog, MaintenancePlan, OneTimeItem, RootStackParamList } from '../types';
+import type { Accessory, AccessoryStatus, MaintenanceLog, MaintenancePlan, OneTimeItem, RootStackParamList } from '../types';
 import {
+  createAccessory,
   createMaintenanceLog,
   createMaintenancePlan,
+  deleteAccessory,
+  deleteAccessoriesByItem,
   deleteMaintenanceLog,
   deleteMaintenanceLogsByItem,
   deleteMaintenancePlan,
   deleteMaintenancePlansByItem,
   deleteOneTimeItem,
+  getAccessoriesByItem,
   getMaintenanceLogsByItem,
   getMaintenancePlansByItem,
   getOneTimeItemById,
@@ -30,6 +34,7 @@ import {
   redeemOneTimeItem,
   resumeOneTimeItem,
   sellOneTimeItem,
+  updateAccessory,
 } from '../database';
 import {
   calculateAssetHealth,
@@ -89,6 +94,16 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const [planInterval, setPlanInterval] = useState('');
   const [planLastDate, setPlanLastDate] = useState(getTodayString());
   const [planBusy, setPlanBusy] = useState(false);
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [accModalVisible, setAccModalVisible] = useState(false);
+  const [accEditingId, setAccEditingId] = useState<number | null>(null);
+  const [accName, setAccName] = useState('');
+  const [accQuantity, setAccQuantity] = useState('1');
+  const [accUnitPrice, setAccUnitPrice] = useState('');
+  const [accBuyDate, setAccBuyDate] = useState(getTodayString());
+  const [accStatus, setAccStatus] = useState<AccessoryStatus>('in_use');
+  const [accNotes, setAccNotes] = useState('');
+  const [accBusy, setAccBusy] = useState(false);
   const redeemScale = useRef(new Animated.Value(0.9)).current;
   const redeemShakeX = useRef(new Animated.Value(0)).current;
   const redeemColor = useRef(new Animated.Value(0)).current;
@@ -100,14 +115,16 @@ export function ItemDetailScreen({ route, navigation }: Props) {
 
   const loadItem = useCallback(async () => {
     try {
-      const [data, logs, plans] = await Promise.all([
+      const [data, logs, plans, accs] = await Promise.all([
         getOneTimeItemById(db, itemId),
         getMaintenanceLogsByItem(db, itemId),
         getMaintenancePlansByItem(db, itemId),
+        getAccessoriesByItem(db, itemId),
       ]);
       setItem(data);
       setMaintenanceLogs(logs);
       setMaintenancePlans(plans);
+      setAccessories(accs);
       if (data) {
         navigation.setOptions({ title: data.name });
       }
@@ -127,6 +144,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       await deleteEntityImageAsync(item?.image_uri);
       await deleteMaintenanceLogsByItem(db, itemId);
       await deleteMaintenancePlansByItem(db, itemId);
+      await deleteAccessoriesByItem(db, itemId);
       await deleteOneTimeItem(db, itemId);
       navigation.goBack();
     }, { confirmText: '删除', destructive: true });
@@ -360,6 +378,108 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     alertConfirm('删除保养计划', '确定要删除这条保养计划吗？', async () => {
       try {
         await deleteMaintenancePlan(db, planId);
+        await loadItem();
+      } catch (error) {
+        alertError('错误', error instanceof Error ? error.message : '删除失败');
+      }
+    }, { confirmText: '删除', destructive: true });
+  }
+
+  /** 配件总成本（在用+损坏的，不含丢失的） */
+  const accessoryTotalCost = useMemo(() => {
+    return accessories
+      .filter(a => a.status !== 'lost')
+      .reduce((sum, a) => sum + a.quantity * a.unit_price, 0);
+  }, [accessories]);
+
+  function openAddAccessoryModal() {
+    setAccEditingId(null);
+    setAccName('');
+    setAccQuantity('1');
+    setAccUnitPrice('');
+    setAccBuyDate(getTodayString());
+    setAccStatus('in_use');
+    setAccNotes('');
+    setAccModalVisible(true);
+  }
+
+  function openEditAccessoryModal(acc: Accessory) {
+    setAccEditingId(acc.id);
+    setAccName(acc.name);
+    setAccQuantity(String(acc.quantity));
+    setAccUnitPrice(acc.unit_price > 0 ? String(acc.unit_price) : '');
+    setAccBuyDate(acc.buy_date ?? getTodayString());
+    setAccStatus(acc.status);
+    setAccNotes(acc.notes ?? '');
+    setAccModalVisible(true);
+  }
+
+  async function handleSaveAccessory() {
+    if (!item || accBusy) return;
+    if (!accName.trim()) {
+      alertError('提示', '请输入配件名称');
+      return;
+    }
+    const qtyNum = parseInt(accQuantity, 10);
+    if (Number.isNaN(qtyNum) || qtyNum < 1) {
+      alertError('提示', '数量必须为 ≥1 的整数');
+      return;
+    }
+    const priceNum = parseFloat(accUnitPrice);
+    if (accUnitPrice.trim() !== '' && (Number.isNaN(priceNum) || priceNum < 0)) {
+      alertError('提示', '请输入有效的单价（≥ 0）');
+      return;
+    }
+
+    setAccBusy(true);
+    try {
+      if (accEditingId !== null) {
+        await updateAccessory(db, accEditingId, {
+          name: accName.trim(),
+          quantity: qtyNum,
+          unit_price: accUnitPrice.trim() === '' ? 0 : priceNum,
+          buy_date: accBuyDate || null,
+          status: accStatus,
+          notes: accNotes.trim() ? accNotes.trim() : null,
+        });
+      } else {
+        await createAccessory(db, {
+          item_id: itemId,
+          name: accName.trim(),
+          quantity: qtyNum,
+          unit_price: accUnitPrice.trim() === '' ? 0 : priceNum,
+          buy_date: accBuyDate || null,
+          status: accStatus,
+          notes: accNotes.trim() ? accNotes.trim() : null,
+        });
+      }
+      setAccModalVisible(false);
+      await loadItem();
+    } catch (error) {
+      alertError('错误', error instanceof Error ? error.message : '保存配件失败');
+    } finally {
+      setAccBusy(false);
+    }
+  }
+
+  async function handleCycleAccessoryStatus(acc: Accessory) {
+    // 在用 → 损坏 → 丢失 → 在用 循环切换
+    const nextStatus: AccessoryStatus =
+      acc.status === 'in_use' ? 'damaged'
+      : acc.status === 'damaged' ? 'lost'
+      : 'in_use';
+    try {
+      await updateAccessory(db, acc.id, { status: nextStatus });
+      await loadItem();
+    } catch (error) {
+      alertError('错误', error instanceof Error ? error.message : '更新状态失败');
+    }
+  }
+
+  async function handleDeleteAccessory(accId: number) {
+    alertConfirm('删除配件', '确定要删除这个配件吗？', async () => {
+      try {
+        await deleteAccessory(db, accId);
         await loadItem();
       } catch (error) {
         alertError('错误', error instanceof Error ? error.message : '删除失败');
@@ -669,6 +789,12 @@ export function ItemDetailScreen({ route, navigation }: Props) {
                 value={formatCurrency(
                   maintenanceLogs.reduce((sum, log) => sum + log.cost, 0),
                 )}
+              />
+            )}
+            {accessories.length > 0 && (
+              <InfoRow
+                label="配件总成本"
+                value={`${formatCurrency(accessoryTotalCost)} · ${accessories.length} 项`}
               />
             )}
           </>
@@ -988,6 +1114,104 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         </View>
       )}
 
+      <View style={styles.accessoryCard}>
+        <View style={styles.accessoryHeader}>
+          <Text style={styles.accessoryTitle}>🔌 配件列表</Text>
+          <TouchableOpacity
+            style={styles.accessoryAddBtn}
+            onPress={openAddAccessoryModal}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.accessoryAddBtnText}>+ 新增</Text>
+          </TouchableOpacity>
+        </View>
+        {accessories.length > 0 && (
+          <Text style={styles.accessorySummary}>
+            共 {accessories.length} 项 · 在用成本 {formatCurrency(accessoryTotalCost)}
+          </Text>
+        )}
+        {accessories.length === 0 ? (
+          <Text style={styles.accessoryEmpty}>
+            还没有配件记录。添加配件可以更准确地计算资产总成本（手柄、充电器、键鼠等）。
+          </Text>
+        ) : (
+          <View style={styles.accessoryList}>
+            {accessories.map(acc => {
+              const isLost = acc.status === 'lost';
+              const isDamaged = acc.status === 'damaged';
+              const lineTotal = acc.quantity * acc.unit_price;
+              return (
+                <View
+                  key={acc.id}
+                  style={[
+                    styles.accessoryRow,
+                    isLost && styles.accessoryRowLost,
+                    isDamaged && styles.accessoryRowDamaged,
+                  ]}
+                >
+                  <View style={styles.accessoryRowMain}>
+                    <View style={styles.accessoryRowHeader}>
+                      <Text
+                        style={[
+                          styles.accessoryRowName,
+                          isLost && styles.accessoryRowNameDim,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {acc.name}
+                        {acc.quantity > 1 ? ` ×${acc.quantity}` : ''}
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          styles.accessoryStatusBadge,
+                          isLost
+                            ? styles.accessoryStatusLost
+                            : isDamaged
+                              ? styles.accessoryStatusDamaged
+                              : styles.accessoryStatusInUse,
+                        ]}
+                        onPress={() => handleCycleAccessoryStatus(acc)}
+                        activeOpacity={0.6}
+                      >
+                        <Text style={styles.accessoryStatusText}>
+                          {isLost ? '丢失' : isDamaged ? '损坏' : '在用'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.accessoryRowMeta}>
+                      单价 {acc.unit_price > 0 ? formatCurrency(acc.unit_price) : '—'}
+                      {lineTotal > 0 && acc.quantity > 1 ? ` · 小计 ${formatCurrency(lineTotal)}` : ''}
+                      {acc.buy_date ? ` · 购于 ${formatDate(acc.buy_date)}` : ''}
+                    </Text>
+                    {acc.notes ? (
+                      <Text style={styles.accessoryRowNotes} numberOfLines={2}>
+                        {acc.notes}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.accessoryRowActions}>
+                    <TouchableOpacity
+                      style={styles.accessoryEditBtn}
+                      onPress={() => openEditAccessoryModal(acc)}
+                      activeOpacity={0.6}
+                    >
+                      <Text style={styles.accessoryEditBtnText}>编辑</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.accessoryDeleteBtn}
+                      onPress={() => handleDeleteAccessory(acc.id)}
+                      activeOpacity={0.6}
+                    >
+                      <Text style={styles.accessoryDeleteBtnText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </View>
+
       <View style={styles.actions}>
         <BrutalButton
           title="📤 分享卡片"
@@ -1303,6 +1527,102 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               <BrutalButton
                 title="取消"
                 onPress={() => setPlanModalVisible(false)}
+                variant="outline"
+                size="md"
+                style={styles.modalBtn}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={accModalVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>
+              {accEditingId !== null ? '编辑配件' : '新增配件'}
+            </Text>
+            <Text style={styles.modalDesc}>
+              记录资产的配件信息（手柄、遥控器、充电线等），便于核算真实持有成本。
+            </Text>
+            <PixelInput
+              label="名称"
+              value={accName}
+              onChangeText={setAccName}
+              placeholder="例如：手柄 / 充电器 / 收纳盒"
+            />
+            <PixelInput
+              label="数量"
+              value={accQuantity}
+              onChangeText={setAccQuantity}
+              placeholder="1"
+              keyboardType="decimal-pad"
+            />
+            <PixelInput
+              label="单价（可选）"
+              value={accUnitPrice}
+              onChangeText={setAccUnitPrice}
+              placeholder="0"
+              keyboardType="decimal-pad"
+            />
+            <DatePickerField
+              label="购买日期（可选）"
+              value={accBuyDate}
+              onChange={setAccBuyDate}
+            />
+            <Text style={styles.modalFieldLabel}>状态</Text>
+            <View style={styles.accessoryStatusPicker}>
+              {(['in_use', 'damaged', 'lost'] as AccessoryStatus[]).map(s => {
+                const active = accStatus === s;
+                const label = s === 'in_use' ? '在用' : s === 'damaged' ? '损坏' : '丢失';
+                return (
+                  <TouchableOpacity
+                    key={s}
+                    style={[
+                      styles.accessoryStatusPickerItem,
+                      active && (
+                        s === 'in_use'
+                          ? styles.accessoryStatusInUse
+                          : s === 'damaged'
+                            ? styles.accessoryStatusDamaged
+                            : styles.accessoryStatusLost
+                      ),
+                    ]}
+                    onPress={() => setAccStatus(s)}
+                    activeOpacity={0.6}
+                  >
+                    <Text
+                      style={[
+                        styles.accessoryStatusPickerText,
+                        active && styles.accessoryStatusPickerTextActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <PixelInput
+              label="备注（可选）"
+              value={accNotes}
+              onChangeText={setAccNotes}
+              placeholder="例如：第二个手柄 / 已划痕"
+              multiline
+              style={styles.maintDescInput}
+            />
+            <View style={styles.modalActions}>
+              <BrutalButton
+                title={accEditingId !== null ? '保存修改' : '添加配件'}
+                onPress={handleSaveAccessory}
+                loading={accBusy}
+                variant="primary"
+                size="md"
+                style={styles.modalBtn}
+              />
+              <BrutalButton
+                title="取消"
+                onPress={() => setAccModalVisible(false)}
                 variant="outline"
                 size="md"
                 style={styles.modalBtn}
@@ -1880,6 +2200,13 @@ const createStyles = () => StyleSheet.create({
   maintDescInput: {
     marginBottom: THEME.spacing.md,
   },
+  modalFieldLabel: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    marginBottom: THEME.spacing.xs,
+    marginTop: THEME.spacing.xs,
+  },
   planCard: {
     backgroundColor: THEME.colors.surface,
     ...THEME.pixelBorder,
@@ -2009,5 +2336,182 @@ const createStyles = () => StyleSheet.create({
     fontWeight: '900',
     color: THEME.colors.dangerDark,
     lineHeight: 18,
+  },
+  accessoryCard: {
+    backgroundColor: THEME.colors.surface,
+    ...THEME.pixelBorder,
+    ...THEME.pixelShadow,
+    padding: THEME.spacing.lg,
+    marginBottom: THEME.spacing.lg,
+  },
+  accessoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: THEME.spacing.xs,
+  },
+  accessoryTitle: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  accessoryAddBtn: {
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xs,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.primary,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.primaryLight + '20',
+  },
+  accessoryAddBtnText: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.primaryDark,
+  },
+  accessorySummary: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginBottom: THEME.spacing.sm,
+  },
+  accessoryEmpty: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
+  },
+  accessoryList: {
+    gap: THEME.spacing.xs,
+  },
+  accessoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.sm,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    borderRadius: 4,
+  },
+  accessoryRowLost: {
+    borderWidth: 1,
+    borderColor: THEME.colors.danger,
+    backgroundColor: THEME.colors.dangerBg,
+    opacity: 0.75,
+  },
+  accessoryRowDamaged: {
+    borderWidth: 1.5,
+    borderColor: THEME.colors.warning,
+    backgroundColor: THEME.colors.warningBg,
+  },
+  accessoryRowMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  accessoryRowHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+    gap: THEME.spacing.xs,
+  },
+  accessoryRowName: {
+    flex: 1,
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    marginRight: THEME.spacing.sm,
+  },
+  accessoryRowNameDim: {
+    textDecorationLine: 'line-through',
+    color: THEME.colors.textSecondary,
+  },
+  accessoryStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+    borderWidth: 1,
+  },
+  accessoryStatusInUse: {
+    backgroundColor: THEME.colors.successBg,
+    borderColor: THEME.colors.success,
+  },
+  accessoryStatusDamaged: {
+    backgroundColor: THEME.colors.warningBg,
+    borderColor: THEME.colors.warning,
+  },
+  accessoryStatusLost: {
+    backgroundColor: THEME.colors.dangerBg,
+    borderColor: THEME.colors.danger,
+  },
+  accessoryStatusText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  accessoryRowMeta: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+  },
+  accessoryRowNotes: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  accessoryRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: THEME.spacing.sm,
+    gap: THEME.spacing.xs,
+  },
+  accessoryEditBtn: {
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xs,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.primary,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.primaryLight + '20',
+  },
+  accessoryEditBtnText: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.primaryDark,
+  },
+  accessoryDeleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    backgroundColor: THEME.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accessoryDeleteBtnText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: THEME.colors.dangerDark,
+    lineHeight: 18,
+  },
+  accessoryStatusPicker: {
+    flexDirection: 'row',
+    gap: THEME.spacing.xs,
+    marginBottom: THEME.spacing.md,
+  },
+  accessoryStatusPickerItem: {
+    flex: 1,
+    paddingVertical: THEME.spacing.sm,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    backgroundColor: THEME.colors.background,
+    alignItems: 'center',
+  },
+  accessoryStatusPickerText: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  accessoryStatusPickerTextActive: {
+    color: THEME.colors.textPrimary,
   },
 });
