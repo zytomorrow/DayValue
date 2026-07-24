@@ -724,7 +724,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
             style={[
               styles.warrantyCard,
               warrantyInfo.status === 'expired'
-                ? { borderColor: THEME.colors.dangerDark, backgroundColor: '#FFF0EE' }
+                ? { borderColor: THEME.colors.dangerDark, backgroundColor: THEME.colors.dangerBg }
                 : { borderColor: THEME.colors.warning, backgroundColor: THEME.colors.warningBg },
             ]}
           >
@@ -1220,24 +1220,24 @@ const createStyles = () => StyleSheet.create({
   },
   highlightLabel: {
     fontSize: THEME.fontSize.sm,
-    color: '#FFFFFFAA',
+    color: THEME.colors.onPrimary + 'AA',
     marginBottom: 4,
   },
   highlightValue: {
     fontSize: 20,
     fontFamily: THEME.fontFamily.pixel,
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
   highlightSub: {
     fontSize: THEME.fontSize.sm,
-    color: '#FFFFFFCC',
+    color: THEME.colors.onPrimary + 'CC',
     marginTop: 4,
   },
   bloodCard: {
     borderWidth: 2,
     borderColor: THEME.colors.danger,
     borderRadius: THEME.borderRadius,
-    backgroundColor: '#FFF0EE',
+    backgroundColor: THEME.colors.dangerBg,
     padding: THEME.spacing.lg,
     marginBottom: THEME.spacing.lg,
   },

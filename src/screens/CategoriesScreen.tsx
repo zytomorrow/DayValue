@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CategoryInfo, CategoryType, RootStackParamList } from '../types';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { THEME } from '../utils/constants';
 import { DEFAULT_ICON, findIconOption } from '../utils/iconLibrary';
 import { BrutalButton, IconPicker, PixelInput } from '../components';
@@ -35,6 +36,8 @@ export function CategoriesScreen({}: Props) {
     deleteCategory,
     getCategoryUsageCount,
   } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
 
   const [activeType, setActiveType] = useState<CategoryType>('item');
   const [createVisible, setCreateVisible] = useState(false);
@@ -322,7 +325,7 @@ export function CategoriesScreen({}: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: THEME.colors.background,
@@ -351,7 +354,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tabTextActive: {
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
   headerRow: {
     flexDirection: 'row',

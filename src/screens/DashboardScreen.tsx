@@ -865,25 +865,25 @@ export function DashboardScreen({ navigation }: Props) {
   const chrome = useMemo<DashboardChrome>(() => {
     if (activeTab === 'debts') {
       return {
-        backgroundColor: '#E17055',
-        borderColor: '#C56B4B',
-        subtitleColor: '#FFD8CC',
+        backgroundColor: THEME.colors.danger,
+        borderColor: THEME.colors.dangerDark,
+        subtitleColor: THEME.colors.danger,
       };
     }
     if (activeTab === 'stored_cards') {
       return {
-        backgroundColor: '#B8860B',
-        borderColor: '#856404',
-        subtitleColor: '#FFE89A',
-        costColor: '#FFE066',
-        hintColor: '#FFE89ACC',
+        backgroundColor: THEME.colors.warning,
+        borderColor: THEME.colors.warning,
+        subtitleColor: THEME.colors.highlight,
+        costColor: THEME.colors.highlight,
+        hintColor: THEME.colors.highlight + 'CC',
       };
     }
     return {
       backgroundColor: THEME.colors.primary,
       borderColor: THEME.colors.borderDark,
     };
-  }, [activeTab]);
+  }, [activeTab, themeId]);
 
   const sortSheetConfig = useMemo<SortSheetConfig | null>(() => {
     if (sortSheetTarget === 'assets') {
@@ -1776,7 +1776,7 @@ export function DashboardScreen({ navigation }: Props) {
               <View style={styles.helpDivider} />
 
               <View style={styles.helpSection}>
-                <View style={[styles.helpTag, { backgroundColor: '#E17055' }]}>
+                <View style={[styles.helpTag, { backgroundColor: THEME.colors.danger }]}>
                   <Text style={styles.helpTagText}>每日消耗</Text>
                 </View>
                 <Text style={styles.helpBody}>
@@ -1792,7 +1792,7 @@ export function DashboardScreen({ navigation }: Props) {
               <View style={styles.helpDivider} />
 
               <View style={styles.helpSection}>
-                <View style={[styles.helpTag, { backgroundColor: '#E6A817' }]}>
+                <View style={[styles.helpTag, { backgroundColor: THEME.colors.warning }]}>
                   <Text style={styles.helpTagText}>沉睡卡包</Text>
                 </View>
                 <Text style={styles.helpBody}>
@@ -1918,11 +1918,11 @@ const createStyles = () => StyleSheet.create({
     backgroundColor: THEME.colors.primaryLight + '30',
   },
   tabActiveDebt: {
-    borderColor: '#C0392B',
+    borderColor: THEME.colors.dangerDark,
     backgroundColor: 'rgba(231,76,60,0.2)',
   },
   tabActiveStored: {
-    borderColor: '#B8860B',
+    borderColor: THEME.colors.warning,
     backgroundColor: THEME.colors.warning + '33',
   },
   tabText: {
@@ -1935,11 +1935,11 @@ const createStyles = () => StyleSheet.create({
     fontWeight: '700',
   },
   tabTextActiveDebt: {
-    color: '#C0392B',
+    color: THEME.colors.dangerDark,
     fontWeight: '700',
   },
   tabTextActiveStored: {
-    color: '#856404',
+    color: THEME.colors.warning,
     fontWeight: '700',
   },
   list: {
@@ -2191,7 +2191,7 @@ const createStyles = () => StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: THEME.colors.success,
     borderWidth: 2,
-    borderColor: '#00937A',
+    borderColor: THEME.colors.success,
     borderRadius: THEME.borderRadius,
     paddingVertical: THEME.spacing.md,
     paddingHorizontal: THEME.spacing.lg,
@@ -2222,7 +2222,7 @@ const createStyles = () => StyleSheet.create({
   dormantCardBannerTitle: {
     fontSize: THEME.fontSize.sm,
     fontWeight: '900',
-    color: '#856404',
+    color: THEME.colors.warning,
     marginBottom: 2,
   },
   dormantCardBannerHint: {

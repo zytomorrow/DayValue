@@ -4,7 +4,7 @@
  * 输入：路由参数中的 storedCardId、defaultCardType。
  * 输出：保存或删除卡包记录，必要时同步保存本地封面图片。
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -33,6 +33,7 @@ import {
   PixelInput,
 } from '../components';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { THEME } from '../utils/constants';
 import { getTodayString } from '../utils/formatters';
 import {
@@ -47,6 +48,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'AddEditStoredCard'>;
 export function AddEditStoredCardScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
   const { getCategoryInfo, loading: categoriesLoading } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const editId = route.params?.storedCardId;
   const defaultCardType = route.params?.defaultCardType ?? 'amount';
   const isEditing = editId !== undefined;
@@ -414,6 +417,8 @@ function TypeButton({
   active: boolean;
   onPress: () => void;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <TouchableOpacity
       style={[styles.toggleBtn, active && styles.toggleActive]}
@@ -425,7 +430,7 @@ function TypeButton({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   flex: { flex: 1 },
   container: {
     flex: 1,

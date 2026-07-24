@@ -29,6 +29,7 @@ import {
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { EmptyState, EntityCover, SearchBar } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Cabinet'>;
@@ -65,6 +66,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 export function CabinetScreen({ navigation }: Props) {
   const db = useSQLiteContext();
   const { getCategoryInfo } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
 
   const [items, setItems] = useState<OneTimeItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -409,7 +412,7 @@ export function CabinetScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: THEME.colors.background,

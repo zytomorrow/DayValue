@@ -82,6 +82,8 @@ function BrutalCard({
   titleColor: string;
   children: React.ReactNode;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.cardWrap}>
       <View style={styles.cardShadow} pointerEvents="none" />
@@ -110,6 +112,8 @@ function SettingRow({
   last?: boolean;
   danger?: boolean;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const clickable = typeof onPress === 'function';
   return (
     <TouchableOpacity

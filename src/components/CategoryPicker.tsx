@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import type { CategoryInfo, CategoryType } from '../types';
 
@@ -21,6 +22,8 @@ interface CategoryPickerProps {
 }
 
 export function CategoryPicker({ type, selectedId, onSelect, style }: CategoryPickerProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const [visible, setVisible] = useState(false);
   const {
     itemCategories,
@@ -107,7 +110,7 @@ export function CategoryPicker({ type, selectedId, onSelect, style }: CategoryPi
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     marginBottom: THEME.spacing.md,
   },

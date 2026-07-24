@@ -89,7 +89,7 @@ const createStyles = () => StyleSheet.create({
     flexShrink: 1,
     fontSize: THEME.fontSize.sm,
     fontWeight: '400',
-    color: '#FFFFFFCC',
+    color: THEME.colors.onPrimary + 'CC',
   },
   clearButton: {
     marginLeft: 4,
@@ -98,11 +98,11 @@ const createStyles = () => StyleSheet.create({
     marginLeft: 4,
     fontSize: 11,
     fontWeight: '400',
-    color: '#FFFFFFCC',
+    color: THEME.colors.onPrimary + 'CC',
   },
   clearText: {
     fontSize: 11,
     fontWeight: '400',
-    color: '#FFFFFFCC',
+    color: THEME.colors.onPrimary + 'CC',
   },
 });

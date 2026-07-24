@@ -368,7 +368,7 @@ const createModalStyles = () => StyleSheet.create({
     left: 5,
     right: 0,
     bottom: 0,
-    backgroundColor: THEME.colors.borderDark,
+    backgroundColor: THEME.colors.shadowColor,
     borderRadius: THEME.borderRadius,
   },
   card: {

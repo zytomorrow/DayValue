@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,6 +13,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../types';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { BrutalButton, PixelInput } from '../components';
 import { THEME } from '../utils/constants';
 import {
@@ -48,6 +49,8 @@ function BrutalCard({
   titleColor: string;
   children: React.ReactNode;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.cardWrap}>
       <View style={styles.cardShadow} pointerEvents="none" />
@@ -64,6 +67,8 @@ function BrutalCard({
 export function BackupScreen({}: Props) {
   const db = useSQLiteContext();
   const { refreshCategories } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
 
   const [server, setServer] = useState('');
   const [username, setUsername] = useState('');
@@ -314,7 +319,7 @@ export function BackupScreen({}: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: THEME.colors.background,
@@ -341,13 +346,13 @@ const styles = StyleSheet.create({
     left: 4,
     right: 0,
     bottom: 0,
-    backgroundColor: '#000000',
+    backgroundColor: THEME.colors.shadowColor,
     borderRadius: THEME.borderRadius,
   },
   card: {
     backgroundColor: THEME.colors.surface,
     borderWidth: 2,
-    borderColor: '#000000',
+    borderColor: THEME.colors.borderDark,
     borderRadius: THEME.borderRadius,
     overflow: 'hidden',
   },
@@ -355,12 +360,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: THEME.spacing.lg,
     paddingVertical: THEME.spacing.sm + 2,
     borderBottomWidth: 2,
-    borderBottomColor: '#000000',
+    borderBottomColor: THEME.colors.borderDark,
   },
   cardHeaderText: {
     fontSize: THEME.fontSize.sm,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
     letterSpacing: 0.4,
   },
   cardBody: {

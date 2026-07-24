@@ -25,22 +25,6 @@ export interface BrutalButtonProps {
   style?: ViewStyle;
 }
 
-const BG: Record<string, string> = {
-  primary: THEME.colors.primary,
-  accent:  THEME.colors.accent,
-  danger:  THEME.colors.danger,
-  success: THEME.colors.success,
-  outline: THEME.colors.surface,
-};
-
-const FG: Record<string, string> = {
-  primary: THEME.colors.onPrimary,
-  accent:  THEME.colors.onPrimary,
-  danger:  THEME.colors.onPrimary,
-  success: THEME.colors.onPrimary,
-  outline: THEME.colors.borderDark,
-};
-
 const SIZING = {
   sm: { pv:  7, ph: 14, fs: THEME.fontSize.sm },
   md: { pv: 12, ph: 22, fs: THEME.fontSize.md },
@@ -59,6 +43,20 @@ export function BrutalButton({
   const s = SIZING[size];
   const { themeId } = useTheme();
   const styles = useMemo(() => createStyles(), [themeId]);
+  const BG: Record<string, string> = {
+    primary: THEME.colors.primary,
+    accent:  THEME.colors.accent,
+    danger:  THEME.colors.danger,
+    success: THEME.colors.success,
+    outline: THEME.colors.surface,
+  };
+  const FG: Record<string, string> = {
+    primary: THEME.colors.onPrimary,
+    accent:  THEME.colors.onPrimary,
+    danger:  THEME.colors.onPrimary,
+    success: THEME.colors.onPrimary,
+    outline: THEME.colors.borderDark,
+  };
   const bg = disabled ? THEME.colors.border : BG[variant];
   const fg = disabled ? THEME.colors.textSecondary : FG[variant];
 

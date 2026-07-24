@@ -9,6 +9,7 @@ import { PieChart } from 'react-native-chart-kit';
 import type { CategoryInfo, MaintenanceLog, NetWorthSnapshot, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
 import { getAllMaintenanceLogs, getAllOneTimeItems, getAllStoredCards, getAllSubscriptions, getRecentNetWorthSnapshots, upsertNetWorthSnapshot } from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import {
   calculateDailyCost,
   calculateDailyDebt,
@@ -33,19 +34,6 @@ type PieSeriesItem = {
   value: number;
   color: string;
 };
-
-const PALETTE = [
-  '#6C5CE7',
-  '#00CEC9',
-  '#0984E3',
-  '#00B894',
-  '#FDCB6E',
-  '#E17055',
-  '#D63031',
-  '#A29BFE',
-  '#81ECEC',
-  '#74B9FF',
-];
 
 function fallbackCategory(
   categoryId: string,
@@ -75,7 +63,7 @@ function buildPieSeries(
       name: info.name,
       icon: info.icon,
       value,
-      color: PALETTE[index % PALETTE.length],
+      color: THEME.chartPalette[index % THEME.chartPalette.length],
     };
   });
 }
@@ -103,10 +91,12 @@ function LegendList({
   series,
   total,
   valueSuffix,
+  styles,
 }: {
   series: PieSeriesItem[];
   total: number;
   valueSuffix?: string;
+  styles: ReturnType<typeof createStyles>;
 }) {
   return (
     <View style={styles.legend}>
@@ -131,6 +121,9 @@ function LegendList({
 export function StatisticsScreen({}: Props) {
   const db = useSQLiteContext();
   const { itemCategories, subscriptionCategories, storedCardCategories } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
+  const chartColors = THEME.chartPalette;
   const [items, setItems] = useState<OneTimeItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
@@ -1234,7 +1227,7 @@ export function StatisticsScreen({}: Props) {
                 paddingLeft={piePaddingLeft}
                 hasLegend={false}
               />
-              <LegendList series={assetSeries} total={totalAssets} />
+              <LegendList series={assetSeries} total={totalAssets} styles={styles} />
             </>
           )}
         </View>
@@ -1256,7 +1249,7 @@ export function StatisticsScreen({}: Props) {
                 paddingLeft={piePaddingLeft}
                 hasLegend={false}
               />
-              <LegendList series={dailySeries} total={totalDaily} valueSuffix="/天" />
+              <LegendList series={dailySeries} total={totalDaily} valueSuffix="/天" styles={styles} />
             </>
           )}
         </View>
@@ -1278,7 +1271,7 @@ export function StatisticsScreen({}: Props) {
                 paddingLeft={piePaddingLeft}
                 hasLegend={false}
               />
-              <LegendList series={storedCardSeries} total={totalStoredPrincipal} />
+              <LegendList series={storedCardSeries} total={totalStoredPrincipal} styles={styles} />
             </>
           )}
         </View>
@@ -1350,7 +1343,7 @@ export function StatisticsScreen({}: Props) {
                 {subscriptionProjection.rows.map((row, index) => (
                   <View key={`proj-${row.id}`} style={styles.legendRow}>
                     <View style={styles.legendLeft}>
-                      <View style={[styles.legendSwatch, { backgroundColor: PALETTE[index % PALETTE.length] }]} />
+                      <View style={[styles.legendSwatch, { backgroundColor: chartColors[index % chartColors.length] }]} />
                       <Text style={styles.legendName} numberOfLines={1}>
                         {row.name}
                       </Text>
@@ -1369,7 +1362,7 @@ export function StatisticsScreen({}: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: THEME.colors.background,
@@ -1912,7 +1905,7 @@ const styles = StyleSheet.create({
   replaceBadgeText: {
     fontSize: 10,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
   ageBarChart: {
     flexDirection: 'row',
@@ -1977,7 +1970,7 @@ const styles = StyleSheet.create({
   },
   agingAlertBox: {
     alignSelf: 'stretch',
-    backgroundColor: '#FFF5F5',
+    backgroundColor: THEME.colors.dangerBg,
     borderWidth: 1.5,
     borderColor: THEME.colors.danger,
     borderRadius: THEME.borderRadius,
@@ -2029,15 +2022,15 @@ const styles = StyleSheet.create({
     marginBottom: THEME.spacing.md,
   },
   concentrationBannerHigh: {
-    backgroundColor: '#FFE5E5',
+    backgroundColor: THEME.colors.dangerBg,
     borderColor: THEME.colors.dangerDark,
   },
   concentrationBannerMedium: {
-    backgroundColor: '#FFFBEA',
+    backgroundColor: THEME.colors.warningBg,
     borderColor: THEME.colors.warning,
   },
   concentrationBannerLow: {
-    backgroundColor: '#E8F8F5',
+    backgroundColor: THEME.colors.successBg,
     borderColor: THEME.colors.success,
   },
   concentrationBannerLabel: {

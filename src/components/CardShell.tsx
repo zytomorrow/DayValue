@@ -108,7 +108,7 @@ const createStyles = () => StyleSheet.create({
   } as ViewStyle,
   cardAlert: {
     borderColor: THEME.colors.warning,
-    shadowColor: '#B7860B',
+    shadowColor: THEME.colors.shadowColor,
   },
   cardDisabled: {
     opacity: 0.55,

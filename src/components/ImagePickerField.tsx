@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { BrutalButton } from './BrutalButton';
 import { EntityCover } from './EntityCover';
 
@@ -24,6 +25,8 @@ export function ImagePickerField({
   onRemove,
   helperText = DEFAULT_HELPER_TEXT,
 }: ImagePickerFieldProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{label}</Text>
@@ -61,7 +64,7 @@ export function ImagePickerField({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     marginBottom: THEME.spacing.md,
   },

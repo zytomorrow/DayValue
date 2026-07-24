@@ -412,7 +412,7 @@ const createStyles = () => StyleSheet.create({
   dormantText: {
     fontSize: THEME.fontSize.xs,
     fontWeight: '700',
-    color: '#856404',
+    color: THEME.colors.warning,
   },
   dataRow: {
     flexDirection: 'row',
@@ -512,7 +512,7 @@ const createStyles = () => StyleSheet.create({
   gridDormantText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#856404',
+    color: THEME.colors.warning,
   },
   gridStats: {
     flexDirection: 'row',

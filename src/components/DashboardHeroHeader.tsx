@@ -67,6 +67,8 @@ export function DashboardHeroHeader({
   onPressAssetFilterTrigger,
   onClearAssetFilter,
 }: DashboardHeroHeaderProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View
       style={[
@@ -270,10 +272,10 @@ const createStyles = () => StyleSheet.create({
     marginTop: 6,
   },
   debtSubtitle: {
-    color: '#FFD8CC',
+    color: THEME.colors.danger,
   },
   storedSubtitle: {
-    color: '#FFE89A',
+    color: THEME.colors.highlight,
   },
   cost: {
     fontSize: 22,
@@ -292,7 +294,7 @@ const createStyles = () => StyleSheet.create({
   },
   storedHint: {
     fontSize: THEME.fontSize.xs,
-    color: '#FFE89ACC',
+    color: THEME.colors.highlight + 'CC',
     fontWeight: '700',
     lineHeight: 18,
   },

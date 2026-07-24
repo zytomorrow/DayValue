@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +22,7 @@ import {
   PixelInput,
 } from '../components';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { THEME } from '../utils/constants';
 import { getTodayString } from '../utils/formatters';
 import {
@@ -35,6 +36,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'AddEditSubscription'>;
 export function AddEditSubscriptionScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
   const { getCategoryInfo, loading: categoriesLoading } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const editId = route.params?.subscriptionId;
   const isEditing = editId !== undefined;
 
@@ -289,6 +292,8 @@ function CycleButton({
   active: boolean;
   onPress: () => void;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <TouchableOpacity
       style={[styles.toggleBtn, active && styles.toggleActive]}
@@ -300,7 +305,7 @@ function CycleButton({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   flex: { flex: 1 },
   container: {
     flex: 1,

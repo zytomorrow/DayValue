@@ -14,6 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../types';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;
@@ -74,6 +75,8 @@ function SectionCard({
   accentColor: string;
   children: React.ReactNode;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <View style={styles.cardWrap}>
       <View style={styles.cardShadow} pointerEvents="none" />
@@ -95,6 +98,9 @@ export function AboutScreen({}: Props) {
     const version = Constants.expoConfig?.version;
     return typeof version === 'string' && version.trim() ? version.trim() : '0.0.0';
   }, []);
+
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
 
   async function openUrl(url: string, failureTitle: string, failureMessage: string) {
     try {
@@ -279,7 +285,7 @@ export function AboutScreen({}: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: THEME.colors.background,
@@ -309,7 +315,7 @@ const styles = StyleSheet.create({
     borderRadius: THEME.borderRadius,
     backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: THEME.colors.onPrimary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: THEME.spacing.md,
@@ -320,7 +326,7 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: THEME.fontSize.xxl,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
     letterSpacing: 1,
   },
   heroSubtitle: {
@@ -331,7 +337,7 @@ const styles = StyleSheet.create({
   },
   heroVersionPill: {
     marginTop: THEME.spacing.md,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: THEME.colors.surface,
     paddingHorizontal: THEME.spacing.md,
     paddingVertical: 4,
     borderRadius: 12,
@@ -354,13 +360,13 @@ const styles = StyleSheet.create({
     left: 4,
     right: 0,
     bottom: 0,
-    backgroundColor: '#000000',
+    backgroundColor: THEME.colors.shadowColor,
     borderRadius: THEME.borderRadius,
   },
   card: {
     backgroundColor: THEME.colors.surface,
     borderWidth: 2,
-    borderColor: '#000000',
+    borderColor: THEME.colors.borderDark,
     borderRadius: THEME.borderRadius,
     overflow: 'hidden',
   },
@@ -368,12 +374,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: THEME.spacing.lg,
     paddingVertical: THEME.spacing.sm + 2,
     borderBottomWidth: 2,
-    borderBottomColor: '#000000',
+    borderBottomColor: THEME.colors.borderDark,
   },
   cardHeaderText: {
     fontSize: THEME.fontSize.sm,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
     letterSpacing: 0.4,
   },
   cardBody: {
@@ -491,12 +497,12 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: THEME.fontSize.md,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
   modalClose: {
     fontSize: 24,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
   modalBody: {
     maxHeight: 460,

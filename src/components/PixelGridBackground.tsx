@@ -8,9 +8,10 @@
  *  - SVG Pattern：每帧都需要 SVG 引擎光栅化 → 掉帧
  *  - PNG repeat ：原生 Bitmap 平铺，GPU 零开销 → 丝滑
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ImageBackground, StyleSheet, type ViewStyle } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pixelGridTile = require('../../assets/pixel-grid-tile.png');
@@ -21,6 +22,8 @@ interface PixelGridBackgroundProps {
 }
 
 export function PixelGridBackground({ children, style }: PixelGridBackgroundProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <ImageBackground
       source={pixelGridTile}
@@ -33,7 +36,7 @@ export function PixelGridBackground({ children, style }: PixelGridBackgroundProp
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: THEME.colors.background,

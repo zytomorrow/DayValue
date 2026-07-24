@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { BrutalButton, EntityCover, ShareModal, StatusBadge } from '../components';
 import type { ShareCardData } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
@@ -29,6 +30,8 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
   const { getCategoryInfo } = useCategories();
   const { subscriptionId } = route.params;
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const [sub, setSub] = useState<Subscription | null>(null);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
 
@@ -205,7 +208,7 @@ const infoStyles = StyleSheet.create({
   },
 });
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: THEME.colors.background,
@@ -267,17 +270,17 @@ const styles = StyleSheet.create({
   },
   highlightLabel: {
     fontSize: THEME.fontSize.sm,
-    color: '#FFFFFFAA',
+    color: THEME.colors.onPrimary + 'AA',
     marginBottom: 4,
   },
   highlightValue: {
     fontSize: 20,
     fontFamily: THEME.fontFamily.pixel,
-    color: '#FFFFFF',
+    color: THEME.colors.onPrimary,
   },
   highlightSub: {
     fontSize: THEME.fontSize.sm,
-    color: '#FFFFFFCC',
+    color: THEME.colors.onPrimary + 'CC',
     marginTop: 4,
   },
   actions: {

@@ -11,6 +11,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { THEME } from '../utils/constants';
+import { useTheme } from '../contexts/ThemeContext';
 import { findIconOption, searchIconGroups } from '../utils/iconLibrary';
 import { PixelInput } from './PixelInput';
 
@@ -31,6 +32,8 @@ export function IconPicker({
   helperText,
   style,
 }: IconPickerProps) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const [visible, setVisible] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -125,7 +128,7 @@ export function IconPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   container: {
     marginBottom: THEME.spacing.md,
   },

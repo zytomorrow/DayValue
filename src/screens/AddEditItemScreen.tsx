@@ -22,6 +22,7 @@ import {
   PixelInput,
 } from '../components';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { THEME } from '../utils/constants';
 import { getTodayString } from '../utils/formatters';
 import { calculateIRR, calculateInstallmentPremium } from '../utils/calculations';
@@ -36,6 +37,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'AddEditItem'>;
 export function AddEditItemScreen({ route, navigation }: Props) {
   const db = useSQLiteContext();
   const { getCategoryInfo, loading: categoriesLoading } = useCategories();
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   const editId = route.params?.itemId;
   const isEditing = editId !== undefined;
   const defaultIsInstallment = route.params?.defaultIsInstallment ?? false;
@@ -474,6 +477,8 @@ function InstallmentButton({
   danger: boolean;
   onPress: () => void;
 }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
   return (
     <TouchableOpacity
       style={[
@@ -495,7 +500,7 @@ function InstallmentButton({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   flex: { flex: 1 },
   container: {
     flex: 1,
@@ -594,7 +599,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: THEME.colors.danger,
     borderRadius: THEME.borderRadius,
-    backgroundColor: '#FFF0EE',
+    backgroundColor: THEME.colors.dangerBg,
     padding: THEME.spacing.md,
     marginBottom: THEME.spacing.md,
   },
