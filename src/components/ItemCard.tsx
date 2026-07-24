@@ -8,12 +8,14 @@ import {
   calculateDailyDebt,
   calculateOneTimeItemActiveDays,
   calculateRealizedProfit,
+  calculateServiceProgress,
   isProfitableSale,
 } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { StatusBadge } from './StatusBadge';
 import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 import { EntityCover } from './EntityCover';
+import { ServiceProgressBar } from './ServiceProgressBar';
 import type { OneTimeItem } from '../types';
 
 type ItemCardLayout = 'list' | 'grid';
@@ -40,6 +42,11 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
   const realizedProfit = isSold ? calculateRealizedProfit(item.total_price, item.salvage_value) : 0;
   const dailyCost = calculateDailyCost(item.total_price, isSold ? item.salvage_value : 0, activeDays);
   const dailyDebt = calculateDailyDebt(item.monthly_payment ?? 0);
+
+  // 服役进度：仅对非赎身（非分期未还完）且设置了预期使用天数的物品生效。
+  const serviceProgress = !isUnredeemed ? calculateServiceProgress(item, activeDays) : null;
+  const showServiceProgress =
+    !isGrid && serviceProgress !== null && serviceProgress.expectedDays !== null;
 
   const archivedLabel =
     item.status !== 'archived'
@@ -183,6 +190,16 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
             ))}
           </View>
           <Text style={styles.progressText}>{monthsPaid} / {totalMonths} 月</Text>
+        </View>
+      )}
+
+      {showServiceProgress && serviceProgress !== null && (
+        <View style={styles.progressSection}>
+          <ServiceProgressBar
+            progress={serviceProgress.progress ?? 0}
+            overService={serviceProgress.overService}
+            valueText={`${serviceProgress.activeDays} / ${serviceProgress.expectedDays} 天`}
+          />
         </View>
       )}
     </CardShell>

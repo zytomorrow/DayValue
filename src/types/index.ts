@@ -30,6 +30,8 @@ export interface OneTimeItem {
   monthly_payment: number | null;
   down_payment: number;   // 首付金额，默认 0
   end_date: string | null;
+  /** 预期使用天数（用于服役进度与折旧估算），为空表示未设置 */
+  expected_life_days: number | null;
 }
 
 /** 周期订阅资产（Subscriptions 表） */
@@ -80,6 +82,7 @@ export interface OneTimeItemInput {
   down_payment?: number;   // 首付金额
   status?: OneTimeItemStatus;
   end_date?: string | null;
+  expected_life_days?: number | null;
 }
 
 export interface SubscriptionInput {
@@ -126,6 +129,7 @@ export type RootStackParamList = {
   Dashboard: undefined;
   Settings: undefined;
   Backup: undefined;
+  Cabinet: undefined;
   AddEditItem: { itemId?: number; defaultIsInstallment?: boolean } | undefined;
   AddEditSubscription: { subscriptionId?: number } | undefined;
   AddEditStoredCard:

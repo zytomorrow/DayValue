@@ -52,6 +52,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
   const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
   const [totalPrice, setTotalPrice] = useState('');
   const [buyDate, setBuyDate] = useState(getTodayString());
+  const [expectedLifeDays, setExpectedLifeDays] = useState('');
 
   const [isInstallment, setIsInstallment] = useState(defaultIsInstallment);
   const [installmentMonths, setInstallmentMonths] = useState('');
@@ -133,6 +134,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
     setOriginalImageUri(item.image_uri ?? null);
     setTotalPrice(String(item.total_price));
     setBuyDate(item.buy_date);
+    setExpectedLifeDays(item.expected_life_days ? String(item.expected_life_days) : '');
     setIsInstallment(item.is_installment === 1);
     setInstallmentMonths(item.installment_months ? String(item.installment_months) : '');
     setMonthlyPayment(item.monthly_payment ? String(item.monthly_payment) : '');
@@ -186,6 +188,16 @@ export function AddEditItemScreen({ route, navigation }: Props) {
       return;
     }
 
+    let expectedLifeDaysNum: number | null = null;
+    if (expectedLifeDays.trim()) {
+      const parsed = parseInt(expectedLifeDays, 10);
+      if (Number.isNaN(parsed) || parsed <= 0) {
+        alertError('提示', '预期使用天数需为正整数');
+        return;
+      }
+      expectedLifeDaysNum = parsed;
+    }
+
     let monthsNum: number | null = null;
     let monthlyPaymentNum: number | null = null;
     let downPaymentNum = 0;
@@ -230,6 +242,7 @@ export function AddEditItemScreen({ route, navigation }: Props) {
         image_uri: savedImageUri,
         total_price: totalPriceNum,
         buy_date: buyDate,
+        expected_life_days: expectedLifeDaysNum,
         is_installment: isInstallment ? 1 : 0,
         installment_months: isInstallment ? monthsNum : null,
         monthly_payment: isInstallment ? monthlyPaymentNum : null,
@@ -299,6 +312,17 @@ export function AddEditItemScreen({ route, navigation }: Props) {
           value={buyDate}
           onChange={setBuyDate}
         />
+
+        <PixelInput
+          label="预期使用天数（可选）"
+          value={expectedLifeDays}
+          onChangeText={setExpectedLifeDays}
+          placeholder="例如：730"
+          keyboardType="number-pad"
+        />
+        <Text style={styles.helperText}>
+          用于计算服役进度与折旧现值。留空则不参与进度/折旧计算。
+        </Text>
 
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>是否分期 / 先用后付</Text>
@@ -428,6 +452,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: THEME.colors.textSecondary,
     marginBottom: THEME.spacing.xs,
+  },
+  helperText: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    marginTop: -THEME.spacing.xs,
+    marginBottom: THEME.spacing.md,
+    lineHeight: 16,
   },
   toggleRow: {
     flexDirection: 'row',

@@ -27,6 +27,8 @@ export type {
   AssetCategorySheetProps,
 } from './AssetCategorySheet';
 export { DashboardHeroHeader } from './DashboardHeroHeader';
+export type { AssetStatusCounts } from './DashboardHeroHeader';
+export { ServiceProgressBar } from './ServiceProgressBar';
 export { ShareCard } from './ShareCard';
 export type { ShareCardData } from './ShareCard';
 export { ShareModal } from './ShareModal';

@@ -1,6 +1,7 @@
 export { DashboardScreen } from './DashboardScreen';
 export { SettingsScreen } from './SettingsScreen';
 export { BackupScreen } from './BackupScreen';
+export { CabinetScreen } from './CabinetScreen';
 export { AddEditItemScreen } from './AddEditItemScreen';
 export { AddEditSubscriptionScreen } from './AddEditSubscriptionScreen';
 export { ItemDetailScreen } from './ItemDetailScreen';

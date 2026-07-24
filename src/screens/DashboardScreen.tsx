@@ -27,6 +27,7 @@ import {
   calculateStoredPrincipal,
   calculateRealizedProfit,
   calculateOneTimeItemActiveDays,
+  calculateNetAssetValue,
   isProfitableSale,
 } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
@@ -45,7 +46,7 @@ import {
   DashboardHeroHeader,
   ShareModal,
 } from '../components';
-import type { ShareCardData } from '../components';
+import type { AssetStatusCounts, ShareCardData } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
@@ -589,6 +590,33 @@ export function DashboardScreen({ navigation }: Props) {
     );
   }, [activeStoredCards]);
 
+  const netAssetValue = useMemo(
+    () =>
+      calculateNetAssetValue(items, activeStoredCards, card =>
+        calculateStoredPrincipal(card.actual_paid, card.face_value, card.current_balance),
+      ).netValue,
+    [items, activeStoredCards],
+  );
+
+  const statusCounts = useMemo<AssetStatusCounts>(() => {
+    let active = 0;
+    let paused = 0;
+    let sold = 0;
+    for (const item of items) {
+      if (item.status === 'active') {
+        active += 1;
+      } else if (item.status === 'archived') {
+        const reason = item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+        if (reason === 'sold') {
+          sold += 1;
+        } else {
+          paused += 1;
+        }
+      }
+    }
+    return { active, paused, sold };
+  }, [items]);
+
   const assetSortSummary = useMemo(() => {
     return getSortSummary(
       itemSortField === 'buy_date' ? '按购买日期' : '按总金额',
@@ -1055,10 +1083,13 @@ export function DashboardScreen({ navigation }: Props) {
           totalSubscriptionCost={totalSubscriptionCost}
           totalPrincipal={totalPrincipal}
           activeStoredCardCount={activeStoredCards.length}
+          netAssetValue={netAssetValue}
+          statusCounts={statusCounts}
           onPressStatistics={() => navigation.navigate('Statistics')}
           onPressSettings={() => navigation.navigate('Settings')}
           onPressHelp={() => setHelpModalVisible(true)}
           onPressShare={handleShareSummary}
+          onPressCabinet={() => navigation.navigate('Cabinet')}
           onPressAssetFilterTrigger={() => setAssetFilterSheetVisible(true)}
           onClearAssetFilter={() => setSelectedAssetCategoryId(null)}
         />

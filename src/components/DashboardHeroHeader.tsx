@@ -7,6 +7,12 @@ import { AssetFilterChip } from './AssetFilterChip';
 
 type DashboardTabKey = 'assets' | 'debts' | 'stored_cards';
 
+export interface AssetStatusCounts {
+  active: number;
+  paused: number;
+  sold: number;
+}
+
 interface DashboardHeroHeaderProps {
   activeTab: DashboardTabKey;
   topPadding: number;
@@ -26,10 +32,13 @@ interface DashboardHeroHeaderProps {
   totalSubscriptionCost: number;
   totalPrincipal: number;
   activeStoredCardCount: number;
+  netAssetValue: number;
+  statusCounts: AssetStatusCounts;
   onPressStatistics: () => void;
   onPressSettings: () => void;
   onPressHelp: () => void;
   onPressShare: () => void;
+  onPressCabinet: () => void;
   onPressAssetFilterTrigger: () => void;
   onClearAssetFilter: () => void;
 }
@@ -47,10 +56,13 @@ export function DashboardHeroHeader({
   totalSubscriptionCost,
   totalPrincipal,
   activeStoredCardCount,
+  netAssetValue,
+  statusCounts,
   onPressStatistics,
   onPressSettings,
   onPressHelp,
   onPressShare,
+  onPressCabinet,
   onPressAssetFilterTrigger,
   onClearAssetFilter,
 }: DashboardHeroHeaderProps) {
@@ -75,6 +87,14 @@ export function DashboardHeroHeader({
             accessibilityLabel="分享总览"
           >
             <Text style={styles.iconText}>📤</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={onPressCabinet}
+            activeOpacity={0.7}
+            accessibilityLabel="数字陈列柜"
+          >
+            <Text style={styles.iconText}>🗄️</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
@@ -154,6 +174,27 @@ export function DashboardHeroHeader({
           </Text>
         </>
       )}
+
+      <View style={styles.netWorthRow}>
+        <View style={styles.netWorthBlock}>
+          <Text style={styles.netWorthLabel}>净资产估算</Text>
+          <Text style={styles.netWorthValue}>{formatCurrency(netAssetValue)}</Text>
+        </View>
+        <View style={styles.statusRow}>
+          <View style={styles.statusChip}>
+            <View style={[styles.statusDot, { backgroundColor: '#7BED9F' }]} />
+            <Text style={styles.statusText}>服役 {statusCounts.active}</Text>
+          </View>
+          <View style={styles.statusChip}>
+            <View style={[styles.statusDot, { backgroundColor: '#FFEAA7' }]} />
+            <Text style={styles.statusText}>停用 {statusCounts.paused}</Text>
+          </View>
+          <View style={styles.statusChip}>
+            <View style={[styles.statusDot, { backgroundColor: '#FFB7B2' }]} />
+            <Text style={styles.statusText}>售出 {statusCounts.sold}</Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
@@ -253,5 +294,55 @@ const styles = StyleSheet.create({
     color: '#FFE89ACC',
     fontWeight: '700',
     lineHeight: 18,
+  },
+  netWorthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: THEME.spacing.md,
+    paddingTop: THEME.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.18)',
+  },
+  netWorthBlock: {
+    flexShrink: 1,
+  },
+  netWorthLabel: {
+    fontSize: 10,
+    color: '#FFFFFFAA',
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  netWorthValue: {
+    fontSize: THEME.fontSize.md,
+    fontFamily: THEME.fontFamily.pixel,
+    color: '#FFFFFF',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-end',
+  },
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 4,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+  },
+  statusText: {
+    fontSize: 10,
+    color: '#FFFFFFE6',
+    fontWeight: '700',
   },
 });

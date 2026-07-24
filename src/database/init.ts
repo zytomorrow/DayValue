@@ -8,7 +8,7 @@ interface TableColumnInfo {
 }
 
 /** 当前数据库结构版本号，备份/恢复时会用来校验兼容性。 */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 async function getTableColumnNames(
   db: SQLiteDatabase,
@@ -140,6 +140,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       && userVersion !== 5
       && userVersion !== 6
       && userVersion !== 7
+      && userVersion !== 8
     ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
@@ -209,6 +210,15 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       workingVersion = 8;
     }
 
+    if (workingVersion === 8) {
+      await current.execAsync(`
+        ALTER TABLE OneTimeItems
+          ADD COLUMN expected_life_days INTEGER
+          CHECK(expected_life_days IS NULL OR expected_life_days > 0);
+      `);
+      workingVersion = 9;
+    }
+
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS OneTimeItems (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -228,6 +238,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         monthly_payment    REAL,
         down_payment       REAL    DEFAULT 0,
         end_date           TEXT,
+        expected_life_days INTEGER CHECK(expected_life_days IS NULL OR expected_life_days > 0),
         CHECK(is_installment = 1 OR (installment_months IS NULL AND monthly_payment IS NULL)),
         CHECK(is_installment = 0 OR (
           installment_months IS NOT NULL
@@ -287,6 +298,12 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
     await ensureColumn(current, 'OneTimeItems', 'image_uri', 'TEXT');
     await ensureColumn(current, 'Subscriptions', 'image_uri', 'TEXT');
     await ensureColumn(current, 'StoredCards', 'image_uri', 'TEXT');
+    await ensureColumn(
+      current,
+      'OneTimeItems',
+      'expected_life_days',
+      'INTEGER CHECK(expected_life_days IS NULL OR expected_life_days > 0)',
+    );
 
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS Categories (

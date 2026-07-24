@@ -56,8 +56,9 @@ export async function createOneTimeItem(
       installment_months,
       monthly_payment,
       down_payment,
-      end_date
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      end_date,
+      expected_life_days
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.name,
       item.category,
@@ -75,6 +76,7 @@ export async function createOneTimeItem(
       item.monthly_payment ?? null,
       item.down_payment ?? 0,
       item.end_date ?? null,
+      item.expected_life_days ?? null,
     ],
   );
   return result.lastInsertRowId;
@@ -105,6 +107,7 @@ export async function updateOneTimeItem(
   if (item.monthly_payment !== undefined) { fields.push('monthly_payment = ?'); values.push(item.monthly_payment ?? null); }
   if (item.down_payment !== undefined) { fields.push('down_payment = ?'); values.push(item.down_payment ?? 0); }
   if (item.end_date !== undefined) { fields.push('end_date = ?'); values.push(item.end_date ?? null); }
+  if (item.expected_life_days !== undefined) { fields.push('expected_life_days = ?'); values.push(item.expected_life_days ?? null); }
 
   if (fields.length === 0) return;
 

@@ -16,6 +16,144 @@ export function calculateDaysUsed(startDate: string, endDate: string | null): nu
   return Math.max(diffDays, 1);
 }
 
+export interface ServiceProgress {
+  /** 当前已激活天数 */
+  activeDays: number;
+  /** 预期使用天数（未设置时为 null） */
+  expectedDays: number | null;
+  /** 进度 0~1（未设置预期寿命时为 null） */
+  progress: number | null;
+  /** 是否已超出预期服役期 */
+  overService: boolean;
+}
+
+/**
+ * 计算资产的服役进度。
+ * 进度 = 激活天数 / 预期使用天数，未设置预期寿命时返回 null（无法计算进度）。
+ */
+export function calculateServiceProgress(
+  item: Pick<OneTimeItem, 'expected_life_days'>,
+  activeDays: number,
+): ServiceProgress {
+  const expectedDays =
+    typeof item.expected_life_days === 'number' && item.expected_life_days > 0
+      ? item.expected_life_days
+      : null;
+
+  if (expectedDays === null) {
+    return { activeDays, expectedDays: null, progress: null, overService: false };
+  }
+
+  const ratio = activeDays / expectedDays;
+  return {
+    activeDays,
+    expectedDays,
+    progress: Math.min(Math.max(ratio, 0), 1),
+    overService: activeDays > expectedDays,
+  };
+}
+
+/**
+ * 计算资产当前的折旧现值（直线折旧到 0）。
+ * - 已售出：返回卖出价（已实现的价值）
+ * - 未设置预期寿命：返回买入价（视为未折旧）
+ * - 已设置预期寿命：现值 = 买入价 × max(0, 1 - 激活天数/预期天数)
+ */
+export function calculateDepreciatedValue(
+  item: Pick<
+    OneTimeItem,
+    'total_price' | 'salvage_value' | 'expected_life_days' | 'status' | 'archived_reason'
+  >,
+  activeDays: number,
+): number {
+  const archivedReason =
+    item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+
+  if (item.status === 'archived' && archivedReason === 'sold') {
+    return item.salvage_value;
+  }
+
+  const expectedDays =
+    typeof item.expected_life_days === 'number' && item.expected_life_days > 0
+      ? item.expected_life_days
+      : null;
+
+  if (expectedDays === null) {
+    return item.total_price;
+  }
+
+  const remaining = Math.max(0, 1 - activeDays / expectedDays);
+  return Math.max(0, item.total_price * remaining);
+}
+
+/**
+ * 计算分期物品的剩余待还本金（按月供 × 剩余期数估算）。
+ * 用于净资产看板中扣减未结清的负债。
+ */
+export function calculateRemainingInstallmentDebt(
+  item: Pick<
+    OneTimeItem,
+    'is_installment' | 'installment_months' | 'monthly_payment' | 'buy_date' | 'status'
+  >,
+): number {
+  if (item.is_installment !== 1 || item.status !== 'unredeemed') return 0;
+  const months = item.installment_months ?? 0;
+  const monthly = item.monthly_payment ?? 0;
+  if (months <= 0 || monthly <= 0) return 0;
+
+  const monthsPaid = Math.min(
+    Math.floor(calculateDaysUsed(item.buy_date, null) / 30),
+    months,
+  );
+  return monthly * Math.max(0, months - monthsPaid);
+}
+
+export interface NetAssetValueBreakdown {
+  /** 在用/停用资产的折旧现值合计（不含已售出） */
+  assetValue: number;
+  /** 沉睡卡包本金合计 */
+  cardPrincipal: number;
+  /** 未结清分期负债合计 */
+  installmentDebt: number;
+  /** 净资产 = 资产现值 + 卡包本金 - 分期负债 */
+  netValue: number;
+}
+
+/**
+ * 汇总个人净资产看板数据。
+ */
+export function calculateNetAssetValue(
+  items: OneTimeItem[],
+  storedCards: StoredCard[],
+  storedPrincipalOf: (card: StoredCard) => number,
+): NetAssetValueBreakdown {
+  let assetValue = 0;
+  let installmentDebt = 0;
+
+  for (const item of items) {
+    const archivedReason =
+      item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+    // 已售出资产已离手，不计入当前持有的净资产。
+    if (item.status === 'archived' && archivedReason === 'sold') continue;
+
+    const activeDays = calculateOneTimeItemActiveDays(item);
+    assetValue += calculateDepreciatedValue(item, activeDays);
+    installmentDebt += calculateRemainingInstallmentDebt(item);
+  }
+
+  const cardPrincipal = storedCards.reduce(
+    (sum, card) => sum + storedPrincipalOf(card),
+    0,
+  );
+
+  return {
+    assetValue,
+    cardPrincipal,
+    installmentDebt,
+    netValue: assetValue + cardPrincipal - installmentDebt,
+  };
+}
+
 /**
  * 计算一次性物品的日均成本
  * 公式：日均成本 = (购买金额 - 卖出价) / 激活天数
@@ -44,7 +182,7 @@ export function isProfitableSale(price: number, soldPrice: number): boolean {
   return calculateRealizedProfit(price, soldPrice) > 0;
 }
 
-import type { BillingCycle, OneTimeItem } from '../types';
+import type { BillingCycle, OneTimeItem, StoredCard } from '../types';
 
 /**
  * 计算一次性资产的“激活天数”（停用期间不增长）

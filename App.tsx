@@ -14,6 +14,7 @@ import {
   DashboardScreen,
   SettingsScreen,
   BackupScreen,
+  CabinetScreen,
   AddEditItemScreen,
   AddEditSubscriptionScreen,
   AddEditStoredCardScreen,
@@ -92,6 +93,11 @@ export default function App() {
                     name="Backup"
                     component={BackupScreen}
                     options={{ title: '备份与恢复' }}
+                  />
+                  <Stack.Screen
+                    name="Cabinet"
+                    component={CabinetScreen}
+                    options={{ title: '数字陈列柜' }}
                   />
                   <Stack.Screen
                     name="AddEditItem"

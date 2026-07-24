@@ -22,16 +22,18 @@ import {
 import {
   calculateDailyCost,
   calculateDailyDebt,
+  calculateDepreciatedValue,
   calculateIRR,
   calculateInstallmentPremium,
   calculateOneTimeItemActiveDays,
   calculateRealizedProfit,
+  calculateServiceProgress,
   isProfitableSale,
 } from '../utils/calculations';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { BrutalButton, DatePickerField, EntityCover, PixelInput, ShareModal, StatusBadge } from '../components';
+import { BrutalButton, DatePickerField, EntityCover, PixelInput, ServiceProgressBar, ShareModal, StatusBadge } from '../components';
 import type { ShareCardData } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
 import { alertConfirm, alertError, alertSuccess } from '../utils/pixelAlert';
@@ -243,6 +245,10 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const realizedProfit = isSold ? calculateRealizedProfit(item.total_price, item.salvage_value) : 0;
   const isProfitableSold = isSold && isProfitableSale(item.total_price, item.salvage_value);
 
+  const serviceProgress = calculateServiceProgress(item, activeDays);
+  const depreciatedValue = calculateDepreciatedValue(item, activeDays);
+  const hasExpectedLife = serviceProgress.expectedDays !== null;
+
   const installmentPremium = isUnredeemed
     ? calculateInstallmentPremium(
         item.total_price,
@@ -319,6 +325,15 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         {!isUnredeemed && (
           <>
             <InfoRow label="激活天数" value={`${activeDays} 天`} />
+            {hasExpectedLife && (
+              <InfoRow
+                label="预期使用天数"
+                value={`${serviceProgress.expectedDays} 天`}
+              />
+            )}
+            {!isSold && (
+              <InfoRow label="折旧现值" value={formatCurrency(depreciatedValue)} />
+            )}
             {isSold && <InfoRow label="卖出价" value={formatCurrency(item.salvage_value)} />}
             {isProfitableSold && (
               <InfoRow label="盈利金额" value={formatCurrency(realizedProfit)} />
@@ -340,6 +355,27 @@ export function ItemDetailScreen({ route, navigation }: Props) {
           />
         )}
       </View>
+
+      {hasExpectedLife && !isUnredeemed && (
+        <View style={styles.serviceCard}>
+          <Text style={styles.serviceTitle}>服役进度</Text>
+          <ServiceProgressBar
+            progress={serviceProgress.progress ?? 0}
+            overService={serviceProgress.overService}
+            valueText={`${activeDays} / ${serviceProgress.expectedDays} 天`}
+          />
+          {serviceProgress.overService ? (
+            <Text style={styles.serviceHint}>
+              已超出预期服役期 {activeDays - (serviceProgress.expectedDays ?? 0)} 天，回本进行中
+            </Text>
+          ) : (
+            <Text style={styles.serviceHint}>
+              剩余预期 {(serviceProgress.expectedDays ?? 0) - activeDays} 天 ·
+              现值约为买入价的 {Math.round((serviceProgress.progress ?? 0) * 100)}%
+            </Text>
+          )}
+        </View>
+      )}
 
       {isUnredeemed && installmentPremium > 0 && (
         <View style={styles.bloodCard}>
@@ -797,5 +833,25 @@ const styles = StyleSheet.create({
   },
   modalBtn: {
     width: '100%',
+  },
+  serviceCard: {
+    marginTop: THEME.spacing.md,
+    padding: THEME.spacing.md,
+    borderRadius: THEME.borderRadius,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    backgroundColor: THEME.colors.surface,
+  },
+  serviceTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    marginBottom: THEME.spacing.sm,
+  },
+  serviceHint: {
+    marginTop: THEME.spacing.sm,
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
   },
 });
