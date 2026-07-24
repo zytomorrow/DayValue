@@ -1589,22 +1589,6 @@ export function DashboardScreen({ navigation }: Props) {
             <Text style={styles.quickAccessEmoji}>📅</Text>
             <Text style={styles.quickAccessLabel}>资产日历</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickAccessBtn}
-            onPress={() => navigation.navigate('Statistics')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickAccessEmoji}>📈</Text>
-            <Text style={styles.quickAccessLabel}>统计详情</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickAccessBtn}
-            onPress={() => navigation.navigate('Cabinet')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickAccessEmoji}>🗄️</Text>
-            <Text style={styles.quickAccessLabel}>陈列柜</Text>
-          </TouchableOpacity>
         </View>
 
         {reminderEnabled && suggestions.length > 0 && (
@@ -2043,7 +2027,7 @@ const createStyles = () => StyleSheet.create({
   },
   quickAccessRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     marginHorizontal: THEME.spacing.lg,
     marginTop: THEME.spacing.md,
     marginBottom: THEME.spacing.sm,
@@ -2051,21 +2035,24 @@ const createStyles = () => StyleSheet.create({
   },
   quickAccessBtn: {
     flex: 1,
+    maxWidth: 140,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
     backgroundColor: THEME.colors.surface,
     borderWidth: 2,
     borderColor: THEME.colors.borderDark,
     borderRadius: THEME.borderRadius,
-    gap: 4,
+    gap: 6,
     ...THEME.pixelShadow,
   },
   quickAccessEmoji: {
-    fontSize: 20,
+    fontSize: 16,
   },
   quickAccessLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
     textAlign: 'center',
