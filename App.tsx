@@ -22,6 +22,7 @@ import {
   SubscriptionDetailScreen,
   CategoriesScreen,
   StatisticsScreen,
+  AboutScreen,
 } from './src/screens';
 import type { RootStackParamList } from './src/types';
 import { THEME } from './src/utils/constants';
@@ -133,6 +134,11 @@ export default function App() {
                     name="AddEditStoredCard"
                     component={AddEditStoredCardScreen}
                     options={{ title: '新增储值卡' }}
+                  />
+                  <Stack.Screen
+                    name="About"
+                    component={AboutScreen}
+                    options={{ title: '关于' }}
                   />
                 </Stack.Navigator>
               </NavigationContainer>

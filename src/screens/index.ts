@@ -9,3 +9,4 @@ export { SubscriptionDetailScreen } from './SubscriptionDetailScreen';
 export { CategoriesScreen } from './CategoriesScreen';
 export { StatisticsScreen } from './StatisticsScreen';
 export { AddEditStoredCardScreen } from './AddEditStoredCardScreen';
+export { AboutScreen } from './AboutScreen';

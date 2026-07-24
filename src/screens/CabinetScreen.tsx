@@ -3,7 +3,7 @@
  * 以网格形式陈列全部资产（买断 / 订阅 / 卡包）的封面，弱化数字、强化视觉收藏感。
  * 支持按状态筛选与按名称/价值排序。
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -29,7 +29,7 @@ import {
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { EmptyState, EntityCover } from '../components';
+import { EmptyState, EntityCover, SearchBar } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Cabinet'>;
 
@@ -39,6 +39,8 @@ type CabinetEntry = {
   icon: string;
   imageUri: string | null;
   subtitle: string;
+  /** 资产所属分类 id */
+  categoryId: string;
   /** 用于排序的数值 */
   sortValue: number;
   /** 状态：active / archived，用于筛选 */
@@ -48,6 +50,7 @@ type CabinetEntry = {
 
 type StatusFilter = 'all' | 'active' | 'archived';
 type SortField = 'name' | 'value' | 'recent';
+type CabinetTypeFilter = 'all' | 'item' | 'subscription' | 'stored_card';
 
 const COLUMNS = 3;
 
@@ -68,6 +71,9 @@ export function CabinetScreen({ navigation }: Props) {
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortField, setSortField] = useState<SortField>('recent');
+  const [typeFilter, setTypeFilter] = useState<CabinetTypeFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -107,6 +113,7 @@ export function CabinetScreen({ navigation }: Props) {
       icon: item.icon ?? cat.icon,
       imageUri: item.image_uri ?? null,
       subtitle,
+      categoryId: item.category ?? 'other',
       sortValue: item.total_price,
       status: item.status === 'archived' ? 'archived' : 'active',
       onPress: () => navigation.navigate('ItemDetail', { itemId: item.id }),
@@ -122,6 +129,7 @@ export function CabinetScreen({ navigation }: Props) {
       icon: sub.icon ?? cat.icon,
       imageUri: sub.image_uri ?? null,
       subtitle: `${formatCurrency(daily)}/天`,
+      categoryId: sub.category ?? 'other',
       sortValue: sub.cycle_price,
       status: sub.status === 'archived' ? 'archived' : 'active',
       onPress: () => navigation.navigate('SubscriptionDetail', { subscriptionId: sub.id }),
@@ -140,6 +148,7 @@ export function CabinetScreen({ navigation }: Props) {
       icon: card.icon ?? cat.icon,
       imageUri: card.image_uri ?? null,
       subtitle,
+      categoryId: card.category ?? 'other',
       sortValue: card.current_balance,
       status: card.status === 'archived' ? 'archived' : 'active',
       onPress: () => navigation.navigate('AddEditStoredCard', { storedCardId: card.id }),
@@ -150,7 +159,14 @@ export function CabinetScreen({ navigation }: Props) {
     (entries: CabinetEntry[]): CabinetEntry[] => {
       let filtered = entries;
       if (statusFilter !== 'all') {
-        filtered = entries.filter(e => e.status === statusFilter);
+        filtered = filtered.filter(e => e.status === statusFilter);
+      }
+      if (categoryFilter !== null) {
+        filtered = filtered.filter(e => e.categoryId === categoryFilter);
+      }
+      const query = search.trim().toLowerCase();
+      if (query) {
+        filtered = filtered.filter(e => e.name.toLowerCase().includes(query));
       }
       const sorted = [...filtered];
       if (sortField === 'name') {
@@ -161,12 +177,47 @@ export function CabinetScreen({ navigation }: Props) {
       // 'recent' 保持原顺序（数据库返回已按时间倒序）
       return sorted;
     },
-    [statusFilter, sortField],
+    [statusFilter, sortField, categoryFilter, search],
   );
 
-  const filteredItems = applyFilterAndSort(itemEntries);
-  const filteredSubscriptions = applyFilterAndSort(subscriptionEntries);
-  const filteredCards = applyFilterAndSort(cardEntries);
+  const filteredItems = typeFilter === 'all' || typeFilter === 'item'
+    ? applyFilterAndSort(itemEntries)
+    : [];
+  const filteredSubscriptions = typeFilter === 'all' || typeFilter === 'subscription'
+    ? applyFilterAndSort(subscriptionEntries)
+    : [];
+  const filteredCards = typeFilter === 'all' || typeFilter === 'stored_card'
+    ? applyFilterAndSort(cardEntries)
+    : [];
+
+  /** 根据当前类型筛选，汇集可选分类集合 */
+  const availableCategoryChips = useMemo(() => {
+    const entriesByType: CabinetEntry[][] = [];
+    if (typeFilter === 'all' || typeFilter === 'item') entriesByType.push(itemEntries);
+    if (typeFilter === 'all' || typeFilter === 'subscription') entriesByType.push(subscriptionEntries);
+    if (typeFilter === 'all' || typeFilter === 'stored_card') entriesByType.push(cardEntries);
+
+    const idSet = new Set<string>();
+    for (const arr of entriesByType) {
+      for (const e of arr) idSet.add(e.categoryId);
+    }
+    const resolveType: 'item' | 'subscription' | 'stored_card' =
+      typeFilter === 'subscription' ? 'subscription'
+        : typeFilter === 'stored_card' ? 'stored_card'
+          : 'item';
+    return Array.from(idSet).map(id => {
+      const info = getCategoryInfo(resolveType, id);
+      return { id, name: info.name, icon: info.icon };
+    }).sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+  }, [itemEntries, subscriptionEntries, cardEntries, typeFilter, getCategoryInfo]);
+
+  /** 当切换类型筛选时，如果分类筛选不合法，重置 */
+  useEffect(() => {
+    if (categoryFilter === null) return;
+    if (!availableCategoryChips.some(c => c.id === categoryFilter)) {
+      setCategoryFilter(null);
+    }
+  }, [availableCategoryChips, categoryFilter]);
 
   const hasContent =
     itemEntries.length > 0 ||
@@ -217,6 +268,33 @@ export function CabinetScreen({ navigation }: Props) {
     >
       {hasContent && (
         <View style={styles.toolbar}>
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="搜索陈列柜..."
+          />
+          <View style={styles.filterRow}>
+            {(['all', 'item', 'subscription', 'stored_card'] as CabinetTypeFilter[]).map(filter => (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.chip,
+                  typeFilter === filter && styles.chipActive,
+                ]}
+                onPress={() => setTypeFilter(filter)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    typeFilter === filter && styles.chipTextActive,
+                  ]}
+                >
+                  {filter === 'all' ? '全部' : filter === 'item' ? '买断' : filter === 'subscription' ? '订阅' : '卡包'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <View style={styles.filterRow}>
             {(['all', 'active', 'archived'] as StatusFilter[]).map(filter => (
               <TouchableOpacity
@@ -234,7 +312,7 @@ export function CabinetScreen({ navigation }: Props) {
                     statusFilter === filter && styles.chipTextActive,
                   ]}
                 >
-                  {filter === 'all' ? '全部' : filter === 'active' ? '在用' : '已归档'}
+                  {filter === 'all' ? '全部状态' : filter === 'active' ? '在用' : '已归档'}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -262,6 +340,42 @@ export function CabinetScreen({ navigation }: Props) {
               </TouchableOpacity>
             ))}
           </View>
+          {availableCategoryChips.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoryScroller}
+              contentContainerStyle={styles.categoryScrollerContent}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.catChip,
+                  categoryFilter === null && styles.catChipActive,
+                ]}
+                onPress={() => setCategoryFilter(null)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.catChipText, categoryFilter === null && styles.catChipTextActive]}>
+                  全部分类
+                </Text>
+              </TouchableOpacity>
+              {availableCategoryChips.map(cat => (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[
+                    styles.catChip,
+                    categoryFilter === cat.id && styles.catChipActive,
+                  ]}
+                  onPress={() => setCategoryFilter(cat.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.catChipText, categoryFilter === cat.id && styles.catChipTextActive]}>
+                    {cat.icon} {cat.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
       )}
 
@@ -340,6 +454,35 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
   },
   chipTextActive: {
+    color: THEME.colors.primaryDark,
+    fontWeight: '800',
+  },
+  categoryScroller: {
+    marginHorizontal: -THEME.spacing.xs,
+  },
+  categoryScrollerContent: {
+    paddingHorizontal: THEME.spacing.xs,
+    gap: THEME.spacing.xs,
+  },
+  catChip: {
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    backgroundColor: THEME.colors.background,
+    marginRight: THEME.spacing.xs,
+  },
+  catChipActive: {
+    borderColor: THEME.colors.borderDark,
+    backgroundColor: THEME.colors.primaryLight + '30',
+  },
+  catChipText: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  catChipTextActive: {
     color: THEME.colors.primaryDark,
     fontWeight: '800',
   },

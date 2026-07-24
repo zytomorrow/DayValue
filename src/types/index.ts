@@ -189,4 +189,5 @@ export type RootStackParamList = {
   SubscriptionDetail: { subscriptionId: number };
   Categories: undefined;
   Statistics: undefined;
+  About: undefined;
 };
