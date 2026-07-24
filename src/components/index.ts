@@ -39,3 +39,5 @@ export { PixelAlertRoot } from './PixelAlertRoot';
 export { SearchBar } from './SearchBar';
 export { AccessorySection } from './AccessorySection';
 export { ErrorBoundary } from './ErrorBoundary';
+export { PixelPieChart } from './PixelPieChart';
+export type { PieSlice } from './PixelPieChart';

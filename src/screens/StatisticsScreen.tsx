@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { PieChart } from 'react-native-chart-kit';
 
 import type { CategoryInfo, MaintenanceLog, NetWorthSnapshot, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
 import { getAllMaintenanceLogs, getAllOneTimeItems, getAllStoredCards, getAllSubscriptions, getRecentNetWorthSnapshots, upsertNetWorthSnapshot } from '../database';
@@ -22,7 +21,7 @@ import {
 } from '../utils/calculations';
 import { formatCurrency, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
-import { EmptyState } from '../components';
+import { EmptyState, PixelPieChart } from '../components';
 import { alertSuccess } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Statistics'>;
@@ -69,12 +68,11 @@ function buildPieSeries(
 }
 
 function toPieChartData(series: PieSeriesItem[]) {
+  // PixelPieChart 直接消费 { value, color, name }，无需 chart-kit 的 population 适配
   return series.map(item => ({
-    name: `${item.icon} ${item.name}`,
-    population: item.value,
+    value: item.value,
     color: item.color,
-    legendFontColor: THEME.colors.textSecondary,
-    legendFontSize: 12,
+    name: `${item.icon} ${item.name}`,
   }));
 }
 
@@ -247,7 +245,6 @@ export function StatisticsScreen({}: Props) {
   );
 
   const chartWidth = Math.min(Dimensions.get('window').width - THEME.spacing.xl * 2, 520);
-  const piePaddingLeft = String(Math.round(chartWidth / 4));
 
   const resolveItemCategory = useCallback(
     (categoryId: string) =>
@@ -847,16 +844,6 @@ export function StatisticsScreen({}: Props) {
     }
   }, [currentNetWorth, db, snapshotBusy]);
 
-  const chartConfig = useMemo(
-    () => ({
-      color: () => THEME.colors.textPrimary,
-      labelColor: () => THEME.colors.textSecondary,
-      backgroundGradientFrom: THEME.colors.surface,
-      backgroundGradientTo: THEME.colors.surface,
-    }),
-    [],
-  );
-
   const heatLevelColors: Record<number, { bg: string; border: string; text: string }> = {
     0: { bg: THEME.colors.background, border: THEME.colors.border, text: THEME.colors.textLight },
     1: { bg: THEME.colors.successBg, border: THEME.colors.success, text: THEME.colors.textPrimary },
@@ -1440,15 +1427,10 @@ export function StatisticsScreen({}: Props) {
             <EmptyState message="暂无在用资产数据，先去添加一些大件资产吧。" icon="📦" />
           ) : (
             <>
-              <PieChart
+              <PixelPieChart
                 data={toPieChartData(assetSeries)}
                 width={chartWidth}
-                height={220}
-                chartConfig={chartConfig}
-                accessor="population"
-                backgroundColor="transparent"
-                paddingLeft={piePaddingLeft}
-                hasLegend={false}
+                formatValue={v => formatCurrency(v)}
               />
               <LegendList series={assetSeries} total={totalAssets} styles={styles} />
             </>
@@ -1462,15 +1444,10 @@ export function StatisticsScreen({}: Props) {
             <EmptyState message="暂无分期或订阅数据，先去添加长期成本项目吧。" icon="🧾" />
           ) : (
             <>
-              <PieChart
+              <PixelPieChart
                 data={toPieChartData(dailySeries)}
                 width={chartWidth}
-                height={220}
-                chartConfig={chartConfig}
-                accessor="population"
-                backgroundColor="transparent"
-                paddingLeft={piePaddingLeft}
-                hasLegend={false}
+                formatValue={v => `${formatCurrency(v)}/天`}
               />
               <LegendList series={dailySeries} total={totalDaily} valueSuffix="/天" styles={styles} />
             </>
@@ -1484,15 +1461,10 @@ export function StatisticsScreen({}: Props) {
             <EmptyState message="暂无卡包数据，去首页卡包标签页添加一项吧。" icon="💳" />
           ) : (
             <>
-              <PieChart
+              <PixelPieChart
                 data={toPieChartData(storedCardSeries)}
                 width={chartWidth}
-                height={220}
-                chartConfig={chartConfig}
-                accessor="population"
-                backgroundColor="transparent"
-                paddingLeft={piePaddingLeft}
-                hasLegend={false}
+                formatValue={v => formatCurrency(v)}
               />
               <LegendList series={storedCardSeries} total={totalStoredPrincipal} styles={styles} />
             </>
