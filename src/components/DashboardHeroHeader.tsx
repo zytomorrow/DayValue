@@ -150,14 +150,14 @@ export function DashboardHeroHeader({
 
       {activeTab === 'assets' && (
         <>
-          <View style={styles.assetSubtitleRow}>
-            <Text
-              style={styles.assetSubtitle}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              今日日均成本 ·
-            </Text>
+          <View style={styles.costRow}>
+            <View style={styles.costLeft}>
+              <Text style={styles.costSubtitle}>今日日均</Text>
+              <Text style={styles.cost}>
+                {formatCurrency(assetDailyCost)}
+                <Text style={styles.unit}>/天</Text>
+              </Text>
+            </View>
             <AssetFilterChip
               selectedCategory={selectedAssetCategory}
               isFiltered={isAssetFiltered}
@@ -165,70 +165,68 @@ export function DashboardHeroHeader({
               onClear={onClearAssetFilter}
             />
           </View>
-          <View style={styles.costRow}>
-            <Text style={styles.cost}>
-              {formatCurrency(assetDailyCost)}
-              <Text style={styles.unit}>/天</Text>
-            </Text>
-            <Text style={styles.assetHintInline} numberOfLines={1}>
-              {assetSummary}
-            </Text>
-          </View>
+          <Text style={styles.assetHintLine} numberOfLines={1}>
+            {assetSummary}
+          </Text>
         </>
       )}
 
       {activeTab === 'debts' && (
         <>
-          <Text style={[styles.subtitle, styles.debtSubtitle]}>今日固定流失</Text>
           <View style={styles.costRow}>
-            <Text style={styles.cost}>
-              {formatCurrency(totalDebtDailyCost)}
-              <Text style={styles.unit}>/天</Text>
-            </Text>
-            <Text style={styles.assetHintInline} numberOfLines={1}>
-              分期 {formatCurrency(totalInstallmentDebt)} · 订阅 {formatCurrency(totalSubscriptionCost)}
-            </Text>
+            <View style={styles.costLeft}>
+              <Text style={[styles.costSubtitle, styles.debtSubtitle]}>今日固定流失</Text>
+              <Text style={styles.cost}>
+                {formatCurrency(totalDebtDailyCost)}
+                <Text style={styles.unit}>/天</Text>
+              </Text>
+            </View>
           </View>
+          <Text style={styles.assetHintLine} numberOfLines={1}>
+            分期 {formatCurrency(totalInstallmentDebt)} · 订阅 {formatCurrency(totalSubscriptionCost)}
+          </Text>
         </>
       )}
 
       {activeTab === 'stored_cards' && (
         <>
-          <Text style={[styles.subtitle, styles.storedSubtitle]}>实际沉睡本金</Text>
           <View style={styles.costRow}>
-            <Text style={[styles.cost, chrome.costColor ? { color: chrome.costColor } : null]}>
-              {formatCurrency(totalPrincipal)}
-            </Text>
-            <Text
-              style={[
-                styles.assetHintInline,
-                chrome.hintColor ? { color: chrome.hintColor } : null,
-              ]}
-              numberOfLines={1}
-            >
-              {activeStoredCardCount} 张在用 · 越早更新越不易遗忘
-            </Text>
+            <View style={styles.costLeft}>
+              <Text style={[styles.costSubtitle, styles.storedSubtitle]}>实际沉睡本金</Text>
+              <Text style={[styles.cost, chrome.costColor ? { color: chrome.costColor } : null]}>
+                {formatCurrency(totalPrincipal)}
+              </Text>
+            </View>
           </View>
+          <Text
+            style={[
+              styles.assetHintLine,
+              chrome.hintColor ? { color: chrome.hintColor } : null,
+            ]}
+            numberOfLines={1}
+          >
+            {activeStoredCardCount} 张在用 · 越早更新越不易遗忘
+          </Text>
         </>
       )}
 
       <View style={styles.netWorthRow}>
         <View style={styles.netWorthBlock}>
-          <Text style={styles.netWorthLabel}>净资产估算</Text>
+          <Text style={styles.netWorthLabel}>净资产 </Text>
           <Text style={styles.netWorthValue}>{formatCurrency(netAssetValue)}</Text>
         </View>
         <View style={styles.statusRow}>
           <View style={styles.statusChip}>
             <View style={[styles.statusDot, { backgroundColor: THEME.colors.success }]} />
-            <Text style={styles.statusText}>服役 {statusCounts.active}</Text>
+            <Text style={styles.statusText}>役{statusCounts.active}</Text>
           </View>
           <View style={styles.statusChip}>
             <View style={[styles.statusDot, { backgroundColor: THEME.colors.warning }]} />
-            <Text style={styles.statusText}>停用 {statusCounts.paused}</Text>
+            <Text style={styles.statusText}>停{statusCounts.paused}</Text>
           </View>
           <View style={styles.statusChip}>
             <View style={[styles.statusDot, { backgroundColor: THEME.colors.danger }]} />
-            <Text style={styles.statusText}>售出 {statusCounts.sold}</Text>
+            <Text style={styles.statusText}>售{statusCounts.sold}</Text>
           </View>
         </View>
       </View>
@@ -261,17 +259,17 @@ export function DashboardHeroHeader({
 const createStyles = () => StyleSheet.create({
   hero: {
     paddingHorizontal: THEME.spacing.xl,
-    paddingBottom: THEME.spacing.sm,
+    paddingBottom: 4,
     borderBottomWidth: 2,
   },
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
+    marginBottom: 0,
   },
   title: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: THEME.fontFamily.pixel,
     color: THEME.colors.onPrimary,
   },
@@ -306,23 +304,45 @@ const createStyles = () => StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     fontWeight: '700',
   },
-  assetSubtitleRow: {
+  // 副标题与成本数字纵向紧贴成一组
+  costLeft: {
+    flexDirection: 'column',
+    flexShrink: 1,
+    gap: 0,
+  },
+  costSubtitle: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '700',
+    marginBottom: 0,
+  },
+  // 成本数字与右侧筛选 chip 同一行
+  costRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'nowrap',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: THEME.spacing.xs,
     minWidth: 0,
     marginTop: 2,
-    marginBottom: 2,
   },
-  assetSubtitle: {
-    fontSize: THEME.fontSize.xs,
+  cost: {
+    fontSize: 18,
+    fontFamily: THEME.fontFamily.pixel,
     color: THEME.colors.onPrimary,
-    fontWeight: '700',
-    marginRight: THEME.spacing.xs,
     flexShrink: 0,
   },
+  unit: {
+    fontSize: 10,
+    fontFamily: undefined,
+  },
+  // 成本下方的一行提示文字（替换原 assetHintInline）
+  assetHintLine: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
   subtitle: {
-    fontSize: THEME.fontSize.xs,
+    fontSize: 10,
     color: THEME.colors.onPrimary,
     marginBottom: 2,
     marginTop: 2,
@@ -333,92 +353,70 @@ const createStyles = () => StyleSheet.create({
   storedSubtitle: {
     color: THEME.colors.highlight,
   },
-  // 成本数字与提示放在同一行，节省垂直空间
-  costRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: THEME.spacing.sm,
-    minWidth: 0,
-  },
-  cost: {
-    fontSize: 20,
-    fontFamily: THEME.fontFamily.pixel,
-    color: THEME.colors.onPrimary,
-    flexShrink: 0,
-  },
-  unit: {
-    fontSize: THEME.fontSize.xs,
-    fontFamily: undefined,
-  },
-  // 内联提示文字，放在 cost 旁边，不再单独占一行
-  assetHintInline: {
-    fontSize: THEME.fontSize.xs,
-    color: THEME.colors.onPrimary,
-    flexShrink: 1,
-    textAlign: 'right',
-  },
+  // 净资产行：标签与数值合并为同一行 inline
   netWorthRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: THEME.spacing.xs,
-    paddingTop: THEME.spacing.xs,
+    marginTop: 4,
+    paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.18)',
   },
   netWorthBlock: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
     flexShrink: 1,
+    gap: 4,
   },
   netWorthLabel: {
     fontSize: 10,
-    color: THEME.colors.onPrimary,
+    color: 'rgba(255,255,255,0.85)',
     fontWeight: '700',
-    marginBottom: 2,
   },
   netWorthValue: {
-    fontSize: THEME.fontSize.md,
+    fontSize: 13,
     fontFamily: THEME.fontFamily.pixel,
     color: THEME.colors.onPrimary,
   },
   statusRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 4,
     justifyContent: 'flex-end',
   },
   statusChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.18)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
     borderRadius: 4,
-    gap: 4,
+    gap: 3,
   },
   statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.6)',
   },
   statusText: {
-    fontSize: 10,
+    fontSize: 9,
     color: THEME.colors.onPrimary,
     fontWeight: '700',
   },
   // 底部 tab 切换行，作为 Hero 的一部分，省掉独立一行
   tabsRow: {
     flexDirection: 'row',
-    marginTop: THEME.spacing.sm,
-    gap: 6,
+    marginTop: 4,
+    gap: 4,
   },
   tabButton: {
     flex: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 5,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.4)',
     backgroundColor: 'rgba(0,0,0,0.15)',
@@ -429,7 +427,7 @@ const createStyles = () => StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.22)',
   },
   tabText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.75)',
   },

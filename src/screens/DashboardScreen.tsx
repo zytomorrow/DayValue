@@ -1498,7 +1498,7 @@ export function DashboardScreen({ navigation }: Props) {
       <View style={styles.container}>
         <DashboardHeroHeader
           activeTab={activeTab}
-          topPadding={insets.top + THEME.spacing.sm}
+          topPadding={insets.top + 2}
           chrome={chrome}
           assetDailyCost={filteredTotalAssetDailyCost}
           assetSummary={assetHeroSummary}
