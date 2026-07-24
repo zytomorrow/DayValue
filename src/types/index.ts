@@ -61,6 +61,25 @@ export interface MaintenanceLogInput {
   description?: string | null;
 }
 
+/** 净资产快照（NetWorthSnapshots 表） */
+export interface NetWorthSnapshot {
+  id: number;
+  snapshot_date: string;
+  asset_value: number;
+  card_principal: number;
+  installment_debt: number;
+  net_value: number;
+  created_at: string;
+}
+
+export interface NetWorthSnapshotInput {
+  snapshot_date: string;
+  asset_value: number;
+  card_principal: number;
+  installment_debt: number;
+  net_value: number;
+}
+
 /** 周期订阅资产（Subscriptions 表） */
 export interface Subscription {
   id: number;

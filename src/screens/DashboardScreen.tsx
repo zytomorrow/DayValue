@@ -19,6 +19,7 @@ import {
   getAllStoredCards,
   getPreference,
   setPreference,
+  redeemOneTimeItem,
 } from '../database';
 import {
   calculateDailyCost,
@@ -34,6 +35,7 @@ import {
   collectExpiryReminders,
   collectSubscriptionRenewalReminders,
   isProfitableSale,
+  type WarrantyStatus,
 } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
 import { THEME } from '../utils/constants';
@@ -53,6 +55,7 @@ import {
   SearchBar,
 } from '../components';
 import type { AssetStatusCounts, ShareCardData } from '../components';
+import { alertConfirm, alertError, alertSuccess } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
@@ -277,6 +280,7 @@ export function DashboardScreen({ navigation }: Props) {
   const [assetSearch, setAssetSearch] = useState('');
   const [debtSearch, setDebtSearch] = useState('');
   const [storedCardSearch, setStoredCardSearch] = useState('');
+  const [warrantyFilter, setWarrantyFilter] = useState<WarrantyStatus | null>(null);
 
   const [itemSortField, setItemSortField] = useState<ItemSortField>('buy_date');
   const [itemSortDirection, setItemSortDirection] = useState<SortDirection>('desc');
@@ -517,6 +521,17 @@ export function DashboardScreen({ navigation }: Props) {
     [assetSearch],
   );
 
+  const matchesWarrantyFilter = useCallback(
+    (item: OneTimeItem) => {
+      if (warrantyFilter === null) return true;
+      // 已归档资产不参与保修筛选
+      if (item.status === 'archived') return false;
+      const info = calculateWarrantyInfo(item);
+      return info.status === warrantyFilter;
+    },
+    [warrantyFilter],
+  );
+
   const matchesDebtSearch = useCallback(
     (item: OneTimeItem | Subscription) => {
       const query = debtSearch.trim().toLowerCase();
@@ -569,12 +584,12 @@ export function DashboardScreen({ navigation }: Props) {
   );
 
   const filteredActiveItems = useMemo(
-    () => sortedActiveItems.filter(item => matchesSelectedAssetCategory(item) && matchesAssetSearch(item)),
-    [matchesSelectedAssetCategory, matchesAssetSearch, sortedActiveItems],
+    () => sortedActiveItems.filter(item => matchesSelectedAssetCategory(item) && matchesAssetSearch(item) && matchesWarrantyFilter(item)),
+    [matchesSelectedAssetCategory, matchesAssetSearch, matchesWarrantyFilter, sortedActiveItems],
   );
   const filteredArchivedItems = useMemo(
-    () => sortedArchivedItems.filter(item => matchesSelectedAssetCategory(item) && matchesAssetSearch(item)),
-    [matchesSelectedAssetCategory, matchesAssetSearch, sortedArchivedItems],
+    () => sortedArchivedItems.filter(item => matchesSelectedAssetCategory(item) && matchesAssetSearch(item) && matchesWarrantyFilter(item)),
+    [matchesSelectedAssetCategory, matchesAssetSearch, matchesWarrantyFilter, sortedArchivedItems],
   );
   const filteredPausedItems = useMemo(
     () => filteredArchivedItems.filter(item => (item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused')) !== 'sold'),
@@ -987,6 +1002,42 @@ export function DashboardScreen({ navigation }: Props) {
           />
         )}
 
+        {hasAnyAsset && (
+          <View style={styles.warrantyFilterRow}>
+            {(
+              [
+                { value: null as WarrantyStatus | null, label: '全部' },
+                { value: 'active' as WarrantyStatus, label: '在保' },
+                { value: 'expiring' as WarrantyStatus, label: '临保' },
+                { value: 'expired' as WarrantyStatus, label: '过保' },
+                { value: 'none' as WarrantyStatus, label: '无保修' },
+              ]
+            ).map(opt => {
+              const active = warrantyFilter === opt.value;
+              return (
+                <TouchableOpacity
+                  key={opt.label}
+                  style={[
+                    styles.warrantyFilterChip,
+                    active && styles.warrantyFilterChipActive,
+                  ]}
+                  onPress={() => setWarrantyFilter(opt.value)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.warrantyFilterChipText,
+                      active && styles.warrantyFilterChipTextActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         {hasReminders && !isAssetFiltered && !isSearching && (
           <View style={styles.reminderCard}>
             <Text style={styles.reminderTitle}>⏰ 到期提醒</Text>
@@ -1171,6 +1222,29 @@ export function DashboardScreen({ navigation }: Props) {
   const renderDebtsTab = () => {
     const hasDebtContent = sortedDebtItems.length > 0 || sortedActiveSubscriptions.length > 0;
     const hasFilteredDebtContent = filteredDebtItems.length > 0 || filteredActiveSubscriptions.length > 0;
+    const redeemableUnredeemedItems = unredeemedItems.filter(
+      item => (item.down_payment ?? 0) >= item.total_price,
+    );
+
+    const handleBatchRedeem = () => {
+      if (redeemableUnredeemedItems.length === 0) return;
+      alertConfirm(
+        '一键赎身',
+        `检测到 ${redeemableUnredeemedItems.length} 件分期物品已付清（首付 ≥ 总价），是否将它们一次性转为「买断资产」？`,
+        async () => {
+          try {
+            await Promise.all(
+              redeemableUnredeemedItems.map(item => redeemOneTimeItem(db, item.id)),
+            );
+            await loadData();
+            alertSuccess('赎身完成', `已成功赎身 ${redeemableUnredeemedItems.length} 件资产`);
+          } catch (error) {
+            alertError('错误', error instanceof Error ? error.message : '一键赎身失败');
+          }
+        },
+        { confirmText: '一键赎身' },
+      );
+    };
 
     return (
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
@@ -1180,6 +1254,19 @@ export function DashboardScreen({ navigation }: Props) {
             onChange={setDebtSearch}
             placeholder="搜索分期 / 订阅..."
           />
+        )}
+
+        {redeemableUnredeemedItems.length > 0 && (
+          <TouchableOpacity
+            style={styles.batchRedeemBanner}
+            onPress={handleBatchRedeem}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.batchRedeemBannerText}>
+              ✅ {redeemableUnredeemedItems.length} 件已付清 · 一键赎身
+            </Text>
+            <Text style={styles.batchRedeemBannerArrow}>→</Text>
+          </TouchableOpacity>
         )}
 
         <SectionToolbar
@@ -1872,6 +1959,57 @@ const styles = StyleSheet.create({
     padding: THEME.spacing.md,
     marginBottom: THEME.spacing.md,
     ...THEME.pixelShadow,
+  },
+  warrantyFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: THEME.spacing.sm,
+  },
+  warrantyFilterChip: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: THEME.borderRadius,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    backgroundColor: THEME.colors.surface,
+  },
+  warrantyFilterChipActive: {
+    backgroundColor: THEME.colors.primary,
+    borderColor: THEME.colors.primaryDark,
+  },
+  warrantyFilterChipText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: THEME.colors.textSecondary,
+  },
+  warrantyFilterChipTextActive: {
+    color: THEME.colors.surface,
+  },
+  batchRedeemBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: THEME.colors.success,
+    borderWidth: 2,
+    borderColor: '#00937A',
+    borderRadius: THEME.borderRadius,
+    paddingVertical: THEME.spacing.md,
+    paddingHorizontal: THEME.spacing.lg,
+    marginBottom: THEME.spacing.md,
+    ...THEME.pixelShadow,
+  },
+  batchRedeemBannerText: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.surface,
+    flex: 1,
+  },
+  batchRedeemBannerArrow: {
+    fontSize: THEME.fontSize.lg,
+    fontWeight: '900',
+    color: THEME.colors.surface,
+    marginLeft: THEME.spacing.sm,
   },
   reminderTitle: {
     fontSize: THEME.fontSize.sm,

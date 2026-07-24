@@ -1,26 +1,28 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PieChart } from 'react-native-chart-kit';
 
-import type { CategoryInfo, MaintenanceLog, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
-import { getAllMaintenanceLogs, getAllOneTimeItems, getAllStoredCards, getAllSubscriptions } from '../database';
+import type { CategoryInfo, MaintenanceLog, NetWorthSnapshot, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
+import { getAllMaintenanceLogs, getAllOneTimeItems, getAllStoredCards, getAllSubscriptions, getRecentNetWorthSnapshots, upsertNetWorthSnapshot } from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
 import {
   calculateDailyCost,
   calculateDailyDebt,
   calculateDepreciatedValue,
   calculateMonthlySpendingTrend,
+  calculateNetAssetValue,
   calculateOneTimeItemActiveDays,
   calculateStoredPrincipal,
   calculateSubscriptionDailyCost,
 } from '../utils/calculations';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { EmptyState } from '../components';
+import { alertSuccess } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Statistics'>;
 
@@ -133,19 +135,23 @@ export function StatisticsScreen({}: Props) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
+  const [snapshots, setSnapshots] = useState<NetWorthSnapshot[]>([]);
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs] = await Promise.all([
+      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs, nextSnapshots] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
         getAllMaintenanceLogs(db),
+        getRecentNetWorthSnapshots(db, 30),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
       setMaintenanceLogs(nextLogs);
+      setSnapshots(nextSnapshots);
     } catch (error) {
       console.error('加载统计数据失败', error);
     }
@@ -390,6 +396,49 @@ export function StatisticsScreen({}: Props) {
     return { rows, totalYearly, totalDaily };
   }, [subscriptions]);
 
+  /** 当前净资产（实时计算，用于和快照对比） */
+  const currentNetWorth = useMemo(
+    () =>
+      calculateNetAssetValue(items, storedCards, card =>
+        calculateStoredPrincipal(card.actual_paid, card.face_value, card.current_balance),
+      ),
+    [items, storedCards],
+  );
+
+  /** 净资产趋势：最近 N 个快照，找到最大值用于纵向缩放 */
+  const netWorthTrend = useMemo(() => {
+    if (snapshots.length === 0) {
+      return { rows: [], maxNet: 0, minNet: 0, delta: 0 };
+    }
+    const maxNet = snapshots.reduce((m, s) => Math.max(m, s.net_value), 0);
+    const minNet = snapshots.reduce((m, s) => Math.min(m, s.net_value), 0);
+    const first = snapshots[0].net_value;
+    const last = snapshots[snapshots.length - 1].net_value;
+    const delta = first === 0 ? 0 : last - first;
+    return { rows: snapshots, maxNet, minNet, delta };
+  }, [snapshots]);
+
+  const handleSaveSnapshot = useCallback(async () => {
+    if (snapshotBusy) return;
+    setSnapshotBusy(true);
+    try {
+      await upsertNetWorthSnapshot(db, {
+        snapshot_date: getTodayString(),
+        asset_value: currentNetWorth.assetValue,
+        card_principal: currentNetWorth.cardPrincipal,
+        installment_debt: currentNetWorth.installmentDebt,
+        net_value: currentNetWorth.netValue,
+      });
+      const nextSnapshots = await getRecentNetWorthSnapshots(db, 30);
+      setSnapshots(nextSnapshots);
+      alertSuccess('快照已保存', `已记录今日净资产 ${formatCurrency(currentNetWorth.netValue)}`);
+    } catch (error) {
+      console.error('保存净资产快照失败', error);
+    } finally {
+      setSnapshotBusy(false);
+    }
+  }, [currentNetWorth, db, snapshotBusy]);
+
   const chartConfig = useMemo(
     () => ({
       color: () => THEME.colors.textPrimary,
@@ -403,6 +452,70 @@ export function StatisticsScreen({}: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <Text style={styles.title}>净资产追踪 · 历史快照</Text>
+          <Text style={styles.subTitle}>
+            当前 {formatCurrency(currentNetWorth.netValue)} · 资产 {formatCurrency(currentNetWorth.assetValue)} · 卡包 {formatCurrency(currentNetWorth.cardPrincipal)} · 负债 {formatCurrency(currentNetWorth.installmentDebt)}
+          </Text>
+          {netWorthTrend.rows.length === 0 ? (
+            <EmptyState message="还没有保存过净资产快照。点击下方按钮可保存今日快照。" icon="📸" />
+          ) : (
+            <>
+              <View style={styles.netWorthChart}>
+                {netWorthTrend.rows.map((snap, index) => {
+                  const range = Math.max(netWorthTrend.maxNet - netWorthTrend.minNet, 1);
+                  const heightPct =
+                    ((snap.net_value - netWorthTrend.minNet) / range) * 100;
+                  const isLast = index === netWorthTrend.rows.length - 1;
+                  return (
+                    <View key={snap.id} style={styles.netWorthBarColumn}>
+                      <View style={styles.netWorthBarTrack}>
+                        <View
+                          style={[
+                            styles.netWorthBarFill,
+                            {
+                              height: `${Math.max(heightPct, 4)}%`,
+                              backgroundColor: isLast
+                                ? THEME.colors.primary
+                                : THEME.colors.primaryLight,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.netWorthBarLabel} numberOfLines={1}>
+                        {snap.snapshot_date.slice(5)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <View style={styles.netWorthDeltaRow}>
+                <Text style={styles.netWorthDeltaLabel}>
+                  {netWorthTrend.rows.length} 个快照 · 期间变化
+                </Text>
+                <Text
+                  style={[
+                    styles.netWorthDeltaValue,
+                    { color: netWorthTrend.delta > 0 ? THEME.colors.success : netWorthTrend.delta < 0 ? THEME.colors.dangerDark : THEME.colors.textSecondary },
+                  ]}
+                >
+                  {netWorthTrend.delta > 0 ? '+' : ''}{formatCurrency(netWorthTrend.delta)}
+                </Text>
+              </View>
+            </>
+          )}
+          <TouchableOpacity
+            style={[styles.snapshotBtn, snapshotBusy && styles.snapshotBtnDisabled]}
+            onPress={handleSaveSnapshot}
+            activeOpacity={0.75}
+            disabled={snapshotBusy}
+          >
+            <Text style={styles.snapshotBtnText}>
+              {snapshotBusy ? '保存中...' : '📸 保存今日快照'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.card}>
           <Text style={styles.title}>月度支出趋势 · 最近 6 个月</Text>
           <Text style={styles.subTitle}>
@@ -1025,5 +1138,83 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.md,
     fontWeight: '900',
     fontFamily: THEME.fontFamily.pixel,
+  },
+  netWorthChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
+    height: 140,
+    marginTop: THEME.spacing.sm,
+    marginBottom: THEME.spacing.sm,
+    paddingHorizontal: 4,
+    gap: 4,
+  },
+  netWorthBarColumn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+    gap: 4,
+  },
+  netWorthBarTrack: {
+    width: '80%',
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    overflow: 'hidden',
+  },
+  netWorthBarFill: {
+    width: '100%',
+    borderRadius: 2,
+  },
+  netWorthBarLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  netWorthDeltaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    alignSelf: 'stretch',
+    marginBottom: THEME.spacing.md,
+  },
+  netWorthDeltaLabel: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  netWorthDeltaValue: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  snapshotBtn: {
+    alignSelf: 'stretch',
+    paddingVertical: THEME.spacing.md,
+    paddingHorizontal: THEME.spacing.lg,
+    backgroundColor: THEME.colors.primary,
+    borderWidth: 2,
+    borderColor: THEME.colors.primaryDark,
+    borderRadius: THEME.borderRadius,
+    alignItems: 'center',
+  },
+  snapshotBtnDisabled: {
+    opacity: 0.5,
+  },
+  snapshotBtnText: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.surface,
   },
 });

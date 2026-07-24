@@ -8,7 +8,7 @@ interface TableColumnInfo {
 }
 
 /** 当前数据库结构版本号，备份/恢复时会用来校验兼容性。 */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 async function getTableColumnNames(
   db: SQLiteDatabase,
@@ -144,6 +144,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       && userVersion !== 9
       && userVersion !== 10
       && userVersion !== 11
+      && userVersion !== 12
     ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
@@ -257,6 +258,22 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       workingVersion = 12;
     }
 
+    if (workingVersion === 12) {
+      await current.execAsync(`
+        CREATE TABLE IF NOT EXISTS NetWorthSnapshots (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          snapshot_date  TEXT    NOT NULL UNIQUE,
+          asset_value    REAL    NOT NULL DEFAULT 0,
+          card_principal REAL    NOT NULL DEFAULT 0,
+          installment_debt REAL  NOT NULL DEFAULT 0,
+          net_value      REAL    NOT NULL DEFAULT 0,
+          created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_date ON NetWorthSnapshots(snapshot_date);
+      `);
+      workingVersion = 13;
+    }
+
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS OneTimeItems (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -328,6 +345,20 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
 
       CREATE INDEX IF NOT EXISTS idx_maintenance_logs_item_id ON MaintenanceLogs(item_id);
       CREATE INDEX IF NOT EXISTS idx_maintenance_logs_date ON MaintenanceLogs(log_date);
+    `);
+
+    await current.execAsync(`
+      CREATE TABLE IF NOT EXISTS NetWorthSnapshots (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_date  TEXT    NOT NULL UNIQUE,
+        asset_value    REAL    NOT NULL DEFAULT 0,
+        card_principal REAL    NOT NULL DEFAULT 0,
+        installment_debt REAL  NOT NULL DEFAULT 0,
+        net_value      REAL    NOT NULL DEFAULT 0,
+        created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_date ON NetWorthSnapshots(snapshot_date);
     `);
 
     await current.execAsync(`

@@ -552,6 +552,19 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               <Text style={styles.maintAddBtnText}>+ 新增</Text>
             </TouchableOpacity>
           </View>
+          {maintenanceLogs.length > 0 && (
+            <View style={styles.maintSummaryRow}>
+              <Text style={styles.maintSummaryLabel}>累计维修</Text>
+              <Text style={styles.maintSummaryValue}>
+                {maintenanceLogs.length} 次 · {formatCurrency(maintenanceLogs.reduce((sum, log) => sum + log.cost, 0))}
+              </Text>
+              <Text style={styles.maintSummarySep}>|</Text>
+              <Text style={styles.maintSummaryLabel}>真实持有成本</Text>
+              <Text style={[styles.maintSummaryValue, { color: THEME.colors.dangerDark }]}>
+                {formatCurrency(item.total_price + maintenanceLogs.reduce((sum, log) => sum + log.cost, 0))}
+              </Text>
+            </View>
+          )}
           {maintenanceLogs.length === 0 ? (
             <Text style={styles.maintEmpty}>
               还没有维修记录。记录每次维修可帮助回顾真实持有成本。
@@ -1178,6 +1191,35 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.xs,
     fontWeight: '800',
     color: THEME.colors.primaryDark,
+  },
+  maintSummaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    marginBottom: THEME.spacing.sm,
+  },
+  maintSummaryLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  maintSummaryValue: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  maintSummarySep: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    color: THEME.colors.textLight,
+    marginHorizontal: 4,
   },
   maintEmpty: {
     fontSize: THEME.fontSize.xs,

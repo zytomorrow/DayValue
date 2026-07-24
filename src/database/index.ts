@@ -6,3 +6,4 @@ export * from './preferences';
 export * from './storedCards';
 export * from './subscriptions';
 export * from './maintenanceLogs';
+export * from './netWorthSnapshots';
