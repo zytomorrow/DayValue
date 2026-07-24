@@ -1128,6 +1128,18 @@ export function DashboardScreen({ navigation }: Props) {
             })}
           </View>
         )}
+
+        {hasAnyAsset && (
+          <AssetSectionToolbar
+            title="在用资产"
+            sortSummary={assetSortSummary}
+            layoutMode={assetLayoutMode}
+            grouped={assetGrouped}
+            onPressSort={() => setSortSheetTarget('assets')}
+            onToggleLayout={toggleAssetLayoutMode}
+            onToggleGrouped={toggleAssetGrouped}
+          />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
@@ -1241,16 +1253,6 @@ export function DashboardScreen({ navigation }: Props) {
           </View>
         )}
 
-        <AssetSectionToolbar
-          title="在用资产"
-          sortSummary={assetSortSummary}
-          layoutMode={assetLayoutMode}
-          grouped={assetGrouped}
-          onPressSort={() => setSortSheetTarget('assets')}
-          onToggleLayout={toggleAssetLayoutMode}
-          onToggleGrouped={toggleAssetGrouped}
-        />
-
         {showHistoryFirst && (
           <TouchableOpacity
             style={styles.historyToggle}
@@ -1350,6 +1352,15 @@ export function DashboardScreen({ navigation }: Props) {
             placeholder="搜索分期 / 订阅..."
           />
         )}
+        {hasDebtContent && (
+          <SectionToolbar
+            title="分期物品"
+            sortSummary={debtSortSummary}
+            layoutMode={debtLayoutMode}
+            onPressSort={() => setSortSheetTarget('debts')}
+            onToggleLayout={toggleDebtLayoutMode}
+          />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
@@ -1365,14 +1376,6 @@ export function DashboardScreen({ navigation }: Props) {
             <Text style={styles.batchRedeemBannerArrow}>→</Text>
           </TouchableOpacity>
         )}
-
-        <SectionToolbar
-          title="分期物品"
-          sortSummary={debtSortSummary}
-          layoutMode={debtLayoutMode}
-          onPressSort={() => setSortSheetTarget('debts')}
-          onToggleLayout={toggleDebtLayoutMode}
-        />
 
         {!hasDebtContent && (
           <EmptyState message="还没有每日消耗记录" icon="📉" />
@@ -1417,6 +1420,15 @@ export function DashboardScreen({ navigation }: Props) {
             placeholder="搜索卡包..."
           />
         )}
+        {hasAnyCard && (
+          <SectionToolbar
+            title="在用卡包"
+            sortSummary={storedCardSortSummary}
+            layoutMode={storedCardLayoutMode}
+            onPressSort={() => setSortSheetTarget('stored_cards')}
+            onToggleLayout={toggleStoredCardLayoutMode}
+          />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
@@ -1450,14 +1462,6 @@ export function DashboardScreen({ navigation }: Props) {
             )}
           </View>
         )}
-
-        <SectionToolbar
-          title="在用卡包"
-          sortSummary={storedCardSortSummary}
-          layoutMode={storedCardLayoutMode}
-          onPressSort={() => setSortSheetTarget('stored_cards')}
-          onToggleLayout={toggleStoredCardLayoutMode}
-        />
 
         {showHistoryFirst && (
           <TouchableOpacity
@@ -1926,8 +1930,8 @@ const createStyles = () => StyleSheet.create({
   // 固定吸顶的搜索 + 筛选工具区，不随列表滚动
   stickyTools: {
     paddingHorizontal: THEME.spacing.lg,
-    paddingTop: 4,
-    paddingBottom: 2,
+    paddingTop: 2,
+    paddingBottom: 0,
     backgroundColor: THEME.colors.background,
     borderBottomWidth: 1,
     borderBottomColor: THEME.colors.border,
@@ -2178,19 +2182,19 @@ const createStyles = () => StyleSheet.create({
   sectionToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: THEME.spacing.sm,
-    marginBottom: THEME.spacing.sm,
+    gap: 6,
+    marginBottom: 2,
   },
   sectionToolbarTitle: {
-    width: 72,
-    fontSize: THEME.fontSize.lg,
+    width: 64,
+    fontSize: THEME.fontSize.md,
     fontWeight: '800',
     color: THEME.colors.textSecondary,
   },
   sortTriggerButton: {
     flex: 1,
-    minHeight: 38,
-    paddingHorizontal: THEME.spacing.md,
+    minHeight: 30,
+    paddingHorizontal: THEME.spacing.sm,
     borderRadius: THEME.borderRadius,
     borderWidth: 1.5,
     borderColor: THEME.colors.borderDark,
@@ -2198,13 +2202,13 @@ const createStyles = () => StyleSheet.create({
     justifyContent: 'center',
   },
   sortTriggerText: {
-    fontSize: THEME.fontSize.sm,
+    fontSize: THEME.fontSize.xs,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
   },
   layoutIconButton: {
-    width: 38,
-    height: 38,
+    width: 30,
+    height: 30,
     borderRadius: THEME.borderRadius,
     borderWidth: 1.5,
     borderColor: THEME.colors.borderDark,
@@ -2213,7 +2217,7 @@ const createStyles = () => StyleSheet.create({
     alignItems: 'center',
   },
   layoutIconText: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '700',
     color: THEME.colors.primary,
   },
