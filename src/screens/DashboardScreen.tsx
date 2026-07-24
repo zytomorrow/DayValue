@@ -28,6 +28,11 @@ import {
   calculateRealizedProfit,
   calculateOneTimeItemActiveDays,
   calculateNetAssetValue,
+  calculateWarrantyInfo,
+  calculateSubscriptionNextRenewalDate,
+  calculateDaysUntil,
+  collectExpiryReminders,
+  collectSubscriptionRenewalReminders,
   isProfitableSale,
 } from '../utils/calculations';
 import { formatCurrency } from '../utils/formatters';
@@ -45,6 +50,7 @@ import {
   AssetGroupedList,
   DashboardHeroHeader,
   ShareModal,
+  SearchBar,
 } from '../components';
 import type { AssetStatusCounts, ShareCardData } from '../components';
 
@@ -268,6 +274,9 @@ export function DashboardScreen({ navigation }: Props) {
   const [assetFilterSheetVisible, setAssetFilterSheetVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedCards, setShowArchivedCards] = useState(false);
+  const [assetSearch, setAssetSearch] = useState('');
+  const [debtSearch, setDebtSearch] = useState('');
+  const [storedCardSearch, setStoredCardSearch] = useState('');
 
   const [itemSortField, setItemSortField] = useState<ItemSortField>('buy_date');
   const [itemSortDirection, setItemSortDirection] = useState<SortDirection>('desc');
@@ -499,6 +508,33 @@ export function DashboardScreen({ navigation }: Props) {
     return (item.category ?? 'other') === selectedAssetCategoryId;
   }, [selectedAssetCategoryId]);
 
+  const matchesAssetSearch = useCallback(
+    (item: OneTimeItem) => {
+      const query = assetSearch.trim().toLowerCase();
+      if (!query) return true;
+      return item.name.toLowerCase().includes(query);
+    },
+    [assetSearch],
+  );
+
+  const matchesDebtSearch = useCallback(
+    (item: OneTimeItem | Subscription) => {
+      const query = debtSearch.trim().toLowerCase();
+      if (!query) return true;
+      return item.name.toLowerCase().includes(query);
+    },
+    [debtSearch],
+  );
+
+  const matchesStoredCardSearch = useCallback(
+    (card: StoredCard) => {
+      const query = storedCardSearch.trim().toLowerCase();
+      if (!query) return true;
+      return card.name.toLowerCase().includes(query);
+    },
+    [storedCardSearch],
+  );
+
   const selectedAssetCategory = useMemo(
     () =>
       selectedAssetCategoryId === null
@@ -533,12 +569,12 @@ export function DashboardScreen({ navigation }: Props) {
   );
 
   const filteredActiveItems = useMemo(
-    () => sortedActiveItems.filter(matchesSelectedAssetCategory),
-    [matchesSelectedAssetCategory, sortedActiveItems],
+    () => sortedActiveItems.filter(item => matchesSelectedAssetCategory(item) && matchesAssetSearch(item)),
+    [matchesSelectedAssetCategory, matchesAssetSearch, sortedActiveItems],
   );
   const filteredArchivedItems = useMemo(
-    () => sortedArchivedItems.filter(matchesSelectedAssetCategory),
-    [matchesSelectedAssetCategory, sortedArchivedItems],
+    () => sortedArchivedItems.filter(item => matchesSelectedAssetCategory(item) && matchesAssetSearch(item)),
+    [matchesSelectedAssetCategory, matchesAssetSearch, sortedArchivedItems],
   );
   const filteredPausedItems = useMemo(
     () => filteredArchivedItems.filter(item => (item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused')) !== 'sold'),
@@ -555,6 +591,23 @@ export function DashboardScreen({ navigation }: Props) {
       return sum + calculateDailyCost(item.total_price, 0, activeDays);
     }, 0);
   }, [filteredActiveItems]);
+
+  const filteredDebtItems = useMemo(
+    () => sortedDebtItems.filter(matchesDebtSearch),
+    [matchesDebtSearch, sortedDebtItems],
+  );
+  const filteredActiveSubscriptions = useMemo(
+    () => sortedActiveSubscriptions.filter(matchesDebtSearch),
+    [matchesDebtSearch, sortedActiveSubscriptions],
+  );
+  const filteredActiveStoredCards = useMemo(
+    () => sortedActiveStoredCards.filter(matchesStoredCardSearch),
+    [matchesStoredCardSearch, sortedActiveStoredCards],
+  );
+  const filteredArchivedStoredCards = useMemo(
+    () => sortedArchivedStoredCards.filter(matchesStoredCardSearch),
+    [matchesStoredCardSearch, sortedArchivedStoredCards],
+  );
 
   const filteredRealizedProfit = useMemo(() => {
     return filteredSoldItems.reduce((sum, item) => {
@@ -616,6 +669,19 @@ export function DashboardScreen({ navigation }: Props) {
     }
     return { active, paused, sold };
   }, [items]);
+
+  const expiryReminders = useMemo(() => {
+    const base = collectExpiryReminders(items);
+    return {
+      ...base,
+      subscriptionRenewing: collectSubscriptionRenewalReminders(subscriptions),
+    };
+  }, [items, subscriptions]);
+  const hasReminders =
+    expiryReminders.warrantyExpiring.length > 0 ||
+    expiryReminders.serviceExpiring.length > 0 ||
+    expiryReminders.overService.length > 0 ||
+    expiryReminders.subscriptionRenewing.length > 0;
 
   const assetSortSummary = useMemo(() => {
     return getSortSummary(
@@ -908,9 +974,129 @@ export function DashboardScreen({ navigation }: Props) {
     const hasArchivedAssets = filteredArchivedItems.length > 0;
     const showHistoryFirst = !hasActiveAssets && hasArchivedAssets;
     const emptyMessage = isAssetFiltered ? '该分类下还没有买断资产记录' : '还没有买断资产记录';
+    const hasAnyAsset = activeItems.length > 0 || archivedItems.length > 0;
+    const isSearching = assetSearch.trim().length > 0;
 
     return (
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        {hasAnyAsset && (
+          <SearchBar
+            value={assetSearch}
+            onChange={setAssetSearch}
+            placeholder="搜索资产名称..."
+          />
+        )}
+
+        {hasReminders && !isAssetFiltered && !isSearching && (
+          <View style={styles.reminderCard}>
+            <Text style={styles.reminderTitle}>⏰ 到期提醒</Text>
+            {expiryReminders.warrantyExpiring.length > 0 && (
+              <View style={styles.reminderSection}>
+                <Text style={styles.reminderSectionLabel}>
+                  🛠️ 保修即将到期 · {expiryReminders.warrantyExpiring.length}
+                </Text>
+                {expiryReminders.warrantyExpiring.slice(0, 3).map(item => {
+                  const info = calculateWarrantyInfo(item);
+                  return (
+                    <TouchableOpacity
+                      key={`w-${item.id}`}
+                      style={styles.reminderRow}
+                      onPress={() => navigation.navigate('ItemDetail', { itemId: item.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.reminderRowName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.reminderRowMeta}>
+                        剩 {info.remainingDays ?? 0} 天
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+            {expiryReminders.serviceExpiring.length > 0 && (
+              <View style={styles.reminderSection}>
+                <Text style={styles.reminderSectionLabel}>
+                  ⏳ 服役寿命即将到期 · {expiryReminders.serviceExpiring.length}
+                </Text>
+                {expiryReminders.serviceExpiring.slice(0, 3).map(item => {
+                  const activeDays = calculateOneTimeItemActiveDays(item);
+                  const remaining =
+                    (item.expected_life_days ?? 0) - activeDays;
+                  return (
+                    <TouchableOpacity
+                      key={`s-${item.id}`}
+                      style={styles.reminderRow}
+                      onPress={() => navigation.navigate('ItemDetail', { itemId: item.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.reminderRowName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.reminderRowMeta}>
+                        剩 {remaining} 天
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+            {expiryReminders.overService.length > 0 && (
+              <View style={styles.reminderSection}>
+                <Text style={styles.reminderSectionLabel}>
+                  💪 已超期服役（已回本） · {expiryReminders.overService.length}
+                </Text>
+                {expiryReminders.overService.slice(0, 3).map(item => {
+                  const activeDays = calculateOneTimeItemActiveDays(item);
+                  const overDays = activeDays - (item.expected_life_days ?? 0);
+                  return (
+                    <TouchableOpacity
+                      key={`o-${item.id}`}
+                      style={styles.reminderRow}
+                      onPress={() => navigation.navigate('ItemDetail', { itemId: item.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.reminderRowName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.reminderRowMeta}>
+                        超期 {overDays} 天
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+            {expiryReminders.subscriptionRenewing.length > 0 && (
+              <View style={styles.reminderSection}>
+                <Text style={styles.reminderSectionLabel}>
+                  💳 订阅即将续费 · {expiryReminders.subscriptionRenewing.length}
+                </Text>
+                {expiryReminders.subscriptionRenewing.slice(0, 3).map(sub => {
+                  const nextDate = calculateSubscriptionNextRenewalDate(sub);
+                  const remaining = nextDate ? calculateDaysUntil(nextDate) : 0;
+                  return (
+                    <TouchableOpacity
+                      key={`r-${sub.id}`}
+                      style={styles.reminderRow}
+                      onPress={() => navigation.navigate('SubscriptionDetail', { subscriptionId: sub.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.reminderRowName} numberOfLines={1}>
+                        {sub.name}
+                      </Text>
+                      <Text style={styles.reminderRowMeta}>
+                        {remaining === 0 ? '今日扣款' : `${remaining} 天后 · ${formatCurrency(sub.cycle_price)}`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+
         <AssetSectionToolbar
           title="在用资产"
           sortSummary={assetSortSummary}
@@ -945,7 +1131,11 @@ export function DashboardScreen({ navigation }: Props) {
             renderAssetList(filteredActiveItems)
           ))}
 
-        {!hasActiveAssets && !hasArchivedAssets && (
+        {hasAnyAsset && !hasActiveAssets && !hasArchivedAssets && isSearching && (
+          <EmptyState message="没有匹配的搜索结果" icon="🔍" />
+        )}
+
+        {!hasAnyAsset && (
           <EmptyState message={emptyMessage} icon="🧾" />
         )}
 
@@ -980,9 +1170,18 @@ export function DashboardScreen({ navigation }: Props) {
 
   const renderDebtsTab = () => {
     const hasDebtContent = sortedDebtItems.length > 0 || sortedActiveSubscriptions.length > 0;
+    const hasFilteredDebtContent = filteredDebtItems.length > 0 || filteredActiveSubscriptions.length > 0;
 
     return (
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        {hasDebtContent && (
+          <SearchBar
+            value={debtSearch}
+            onChange={setDebtSearch}
+            placeholder="搜索分期 / 订阅..."
+          />
+        )}
+
         <SectionToolbar
           title="分期物品"
           sortSummary={debtSortSummary}
@@ -995,16 +1194,20 @@ export function DashboardScreen({ navigation }: Props) {
           <EmptyState message="还没有每日消耗记录" icon="📉" />
         )}
 
-        {sortedDebtItems.length > 0 ? (
-          renderDebtItemList(sortedDebtItems)
-        ) : hasDebtContent ? (
+        {hasDebtContent && !hasFilteredDebtContent && (
+          <EmptyState message="没有匹配的搜索结果" icon="🔍" />
+        )}
+
+        {filteredDebtItems.length > 0 ? (
+          renderDebtItemList(filteredDebtItems)
+        ) : hasFilteredDebtContent ? (
           <Text style={styles.sectionEmptyHint}>暂无分期物品</Text>
         ) : null}
 
         <Text style={styles.subSectionTitle}>持续订阅</Text>
-        {sortedActiveSubscriptions.length > 0 ? (
-          renderSubscriptionList(sortedActiveSubscriptions)
-        ) : hasDebtContent ? (
+        {filteredActiveSubscriptions.length > 0 ? (
+          renderSubscriptionList(filteredActiveSubscriptions)
+        ) : hasFilteredDebtContent ? (
           <Text style={styles.sectionEmptyHint}>暂无持续订阅</Text>
         ) : null}
       </ScrollView>
@@ -1015,9 +1218,19 @@ export function DashboardScreen({ navigation }: Props) {
     const hasActiveCards = sortedActiveStoredCards.length > 0;
     const hasArchivedCards = archivedStoredCards.length > 0;
     const showHistoryFirst = !hasActiveCards && hasArchivedCards;
+    const hasAnyCard = hasActiveCards || hasArchivedCards;
+    const hasFilteredCardContent = filteredActiveStoredCards.length > 0 || filteredArchivedStoredCards.length > 0;
 
     return (
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        {hasAnyCard && (
+          <SearchBar
+            value={storedCardSearch}
+            onChange={setStoredCardSearch}
+            placeholder="搜索卡包..."
+          />
+        )}
+
         <SectionToolbar
           title="在用卡包"
           sortSummary={storedCardSortSummary}
@@ -1038,28 +1251,32 @@ export function DashboardScreen({ navigation }: Props) {
           </TouchableOpacity>
         )}
 
-        {hasActiveCards && renderStoredCardList(sortedActiveStoredCards)}
+        {hasAnyCard && !hasFilteredCardContent && (
+          <EmptyState message="没有匹配的搜索结果" icon="🔍" />
+        )}
 
-        {!hasActiveCards && !hasArchivedCards && (
+        {hasFilteredCardContent && renderStoredCardList(filteredActiveStoredCards)}
+
+        {!hasAnyCard && (
           <EmptyState message="还没有沉睡卡包记录" icon="💳" />
         )}
 
-        {hasActiveCards && hasArchivedCards && (
+        {hasFilteredCardContent && filteredArchivedStoredCards.length > 0 && (
           <TouchableOpacity
             style={styles.historyToggle}
             onPress={() => setShowArchivedCards(value => !value)}
             activeOpacity={0.75}
           >
             <Text style={styles.historyToggleText}>
-              {showArchivedCards ? '收起' : '显示'}已隐藏 ({archivedStoredCards.length})
+              {showArchivedCards ? '收起' : '显示'}已隐藏 ({filteredArchivedStoredCards.length})
             </Text>
           </TouchableOpacity>
         )}
 
-        {showArchivedCards && sortedArchivedStoredCards.length > 0 && (
+        {showArchivedCards && filteredArchivedStoredCards.length > 0 && (
           <>
-            <Text style={styles.subSectionTitle}>已隐藏 ({sortedArchivedStoredCards.length})</Text>
-            {renderStoredCardList(sortedArchivedStoredCards)}
+            <Text style={styles.subSectionTitle}>已隐藏 ({filteredArchivedStoredCards.length})</Text>
+            {renderStoredCardList(filteredArchivedStoredCards)}
           </>
         )}
       </ScrollView>
@@ -1646,5 +1863,53 @@ const styles = StyleSheet.create({
   helpCloseBtn: {
     marginTop: THEME.spacing.md,
     width: '100%',
+  },
+  reminderCard: {
+    backgroundColor: '#FFF8E1',
+    borderWidth: 2,
+    borderColor: THEME.colors.warning,
+    borderRadius: THEME.borderRadius,
+    padding: THEME.spacing.md,
+    marginBottom: THEME.spacing.md,
+    ...THEME.pixelShadow,
+  },
+  reminderTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    color: THEME.colors.borderDark,
+    marginBottom: THEME.spacing.sm,
+  },
+  reminderSection: {
+    marginBottom: THEME.spacing.sm,
+  },
+  reminderSectionLabel: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    marginBottom: THEME.spacing.xs,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: THEME.spacing.sm,
+    backgroundColor: THEME.colors.surface,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    marginBottom: 4,
+  },
+  reminderRowName: {
+    flex: 1,
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    marginRight: THEME.spacing.sm,
+  },
+  reminderRowMeta: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.dangerDark,
   },
 });

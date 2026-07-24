@@ -57,8 +57,12 @@ export async function createOneTimeItem(
       monthly_payment,
       down_payment,
       end_date,
-      expected_life_days
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      expected_life_days,
+      warranty_expiry_date,
+      notes,
+      purchase_channel,
+      serial_number
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       item.name,
       item.category,
@@ -77,6 +81,10 @@ export async function createOneTimeItem(
       item.down_payment ?? 0,
       item.end_date ?? null,
       item.expected_life_days ?? null,
+      item.warranty_expiry_date ?? null,
+      item.notes ?? null,
+      item.purchase_channel ?? null,
+      item.serial_number ?? null,
     ],
   );
   return result.lastInsertRowId;
@@ -108,6 +116,10 @@ export async function updateOneTimeItem(
   if (item.down_payment !== undefined) { fields.push('down_payment = ?'); values.push(item.down_payment ?? 0); }
   if (item.end_date !== undefined) { fields.push('end_date = ?'); values.push(item.end_date ?? null); }
   if (item.expected_life_days !== undefined) { fields.push('expected_life_days = ?'); values.push(item.expected_life_days ?? null); }
+  if (item.warranty_expiry_date !== undefined) { fields.push('warranty_expiry_date = ?'); values.push(item.warranty_expiry_date ?? null); }
+  if (item.notes !== undefined) { fields.push('notes = ?'); values.push(item.notes ?? null); }
+  if (item.purchase_channel !== undefined) { fields.push('purchase_channel = ?'); values.push(item.purchase_channel ?? null); }
+  if (item.serial_number !== undefined) { fields.push('serial_number = ?'); values.push(item.serial_number ?? null); }
 
   if (fields.length === 0) return;
 

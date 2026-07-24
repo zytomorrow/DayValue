@@ -53,6 +53,10 @@ export function AddEditItemScreen({ route, navigation }: Props) {
   const [totalPrice, setTotalPrice] = useState('');
   const [buyDate, setBuyDate] = useState(getTodayString());
   const [expectedLifeDays, setExpectedLifeDays] = useState('');
+  const [warrantyExpiryDate, setWarrantyExpiryDate] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+  const [purchaseChannel, setPurchaseChannel] = useState('');
+  const [serialNumber, setSerialNumber] = useState('');
 
   const [isInstallment, setIsInstallment] = useState(defaultIsInstallment);
   const [installmentMonths, setInstallmentMonths] = useState('');
@@ -135,6 +139,10 @@ export function AddEditItemScreen({ route, navigation }: Props) {
     setTotalPrice(String(item.total_price));
     setBuyDate(item.buy_date);
     setExpectedLifeDays(item.expected_life_days ? String(item.expected_life_days) : '');
+    setWarrantyExpiryDate(item.warranty_expiry_date ?? null);
+    setNotes(item.notes ?? '');
+    setPurchaseChannel(item.purchase_channel ?? '');
+    setSerialNumber(item.serial_number ?? '');
     setIsInstallment(item.is_installment === 1);
     setInstallmentMonths(item.installment_months ? String(item.installment_months) : '');
     setMonthlyPayment(item.monthly_payment ? String(item.monthly_payment) : '');
@@ -243,6 +251,10 @@ export function AddEditItemScreen({ route, navigation }: Props) {
         total_price: totalPriceNum,
         buy_date: buyDate,
         expected_life_days: expectedLifeDaysNum,
+        warranty_expiry_date: warrantyExpiryDate,
+        notes: notes.trim() ? notes.trim() : null,
+        purchase_channel: purchaseChannel.trim() ? purchaseChannel.trim() : null,
+        serial_number: serialNumber.trim() ? serialNumber.trim() : null,
         is_installment: isInstallment ? 1 : 0,
         installment_months: isInstallment ? monthsNum : null,
         monthly_payment: isInstallment ? monthlyPaymentNum : null,
@@ -323,6 +335,55 @@ export function AddEditItemScreen({ route, navigation }: Props) {
         <Text style={styles.helperText}>
           用于计算服役进度与折旧现值。留空则不参与进度/折旧计算。
         </Text>
+
+        <View style={styles.optionalDateRow}>
+          <View style={styles.optionalDateField}>
+            <DatePickerField
+              label="保修到期日（可选）"
+              value={warrantyExpiryDate ?? buyDate}
+              onChange={setWarrantyExpiryDate}
+            />
+          </View>
+          {warrantyExpiryDate ? (
+            <TouchableOpacity
+              style={styles.clearDateBtn}
+              onPress={() => setWarrantyExpiryDate(null)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.clearDateText}>清除</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        {warrantyExpiryDate ? (
+          <Text style={styles.helperText}>
+            已设置保修到期日，将用于健康度评分与到期提醒。
+          </Text>
+        ) : (
+          <Text style={styles.helperText}>
+            选择后将启用保修状态追踪与到期提醒。
+          </Text>
+        )}
+
+        <PixelInput
+          label="购买渠道（可选）"
+          value={purchaseChannel}
+          onChangeText={setPurchaseChannel}
+          placeholder="例如：京东自营 / Apple Store"
+        />
+        <PixelInput
+          label="序列号 / SN（可选）"
+          value={serialNumber}
+          onChangeText={setSerialNumber}
+          placeholder="用于保修查询与售后追溯"
+        />
+        <PixelInput
+          label="备注（可选）"
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="例如：发票号、配件清单、保养提示..."
+          multiline
+          style={styles.notesInput}
+        />
 
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>是否分期 / 先用后付</Text>
@@ -459,6 +520,31 @@ const styles = StyleSheet.create({
     marginTop: -THEME.spacing.xs,
     marginBottom: THEME.spacing.md,
     lineHeight: 16,
+  },
+  notesInput: {
+    marginBottom: THEME.spacing.md,
+  },
+  optionalDateRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: THEME.spacing.sm,
+  },
+  optionalDateField: {
+    flex: 1,
+  },
+  clearDateBtn: {
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm + 2,
+    borderWidth: 2,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    backgroundColor: THEME.colors.surface,
+    marginBottom: THEME.spacing.md,
+  },
+  clearDateText: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '700',
+    color: THEME.colors.dangerDark,
   },
   toggleRow: {
     flexDirection: 'row',

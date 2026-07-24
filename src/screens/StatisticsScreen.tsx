@@ -6,11 +6,15 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PieChart } from 'react-native-chart-kit';
 
-import type { CategoryInfo, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
-import { getAllOneTimeItems, getAllStoredCards, getAllSubscriptions } from '../database';
+import type { CategoryInfo, MaintenanceLog, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
+import { getAllMaintenanceLogs, getAllOneTimeItems, getAllStoredCards, getAllSubscriptions } from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
 import {
+  calculateDailyCost,
   calculateDailyDebt,
+  calculateDepreciatedValue,
+  calculateMonthlySpendingTrend,
+  calculateOneTimeItemActiveDays,
   calculateStoredPrincipal,
   calculateSubscriptionDailyCost,
 } from '../utils/calculations';
@@ -128,17 +132,20 @@ export function StatisticsScreen({}: Props) {
   const [items, setItems] = useState<OneTimeItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
+  const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [nextItems, nextSubscriptions, nextStoredCards] = await Promise.all([
+      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
+        getAllMaintenanceLogs(db),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
+      setMaintenanceLogs(nextLogs);
     } catch (error) {
       console.error('加载统计数据失败', error);
     }
@@ -223,6 +230,65 @@ export function StatisticsScreen({}: Props) {
     return buildPieSeries(sums, resolveStoredCardCategory);
   }, [resolveStoredCardCategory, storedCards]);
 
+  /** 折旧汇总：在用/停用资产的买入总价 vs 当前折旧现值 */
+  const depreciationSummary = useMemo(() => {
+    type CatRow = {
+      categoryId: string;
+      name: string;
+      icon: string;
+      purchaseValue: number;
+      depreciatedValue: number;
+      count: number;
+    };
+    const map = new Map<string, CatRow>();
+
+    for (const item of items) {
+      if (item.status === 'unredeemed') continue;
+      const archivedReason =
+        item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+      // 已售出资产已离手，不计入当前持有折旧
+      if (item.status === 'archived' && archivedReason === 'sold') continue;
+
+      const categoryId = item.category ?? 'other';
+      const info = resolveItemCategory(categoryId);
+      const activeDays = calculateOneTimeItemActiveDays(item);
+      const depValue = calculateDepreciatedValue(item, activeDays);
+
+      const existing = map.get(categoryId);
+      if (existing) {
+        existing.purchaseValue += item.total_price;
+        existing.depreciatedValue += depValue;
+        existing.count += 1;
+      } else {
+        map.set(categoryId, {
+          categoryId,
+          name: info.name,
+          icon: info.icon,
+          purchaseValue: item.total_price,
+          depreciatedValue: depValue,
+          count: 1,
+        });
+      }
+    }
+
+    const rows = Array.from(map.values()).sort(
+      (a, b) => b.depreciatedValue - a.depreciatedValue,
+    );
+    const totalPurchase = rows.reduce((s, r) => s + r.purchaseValue, 0);
+    const totalDepreciated = rows.reduce((s, r) => s + r.depreciatedValue, 0);
+    const totalDepreciationLoss = totalPurchase - totalDepreciated;
+    const depreciationRate =
+      totalPurchase > 0 ? (totalDepreciationLoss / totalPurchase) * 100 : 0;
+
+    return {
+      rows,
+      totalPurchase,
+      totalDepreciated,
+      totalDepreciationLoss,
+      depreciationRate,
+    };
+  }, [items, resolveItemCategory]);
+
   const totalAssets = useMemo(
     () => assetSeries.reduce((sum, item) => sum + item.value, 0),
     [assetSeries],
@@ -235,6 +301,94 @@ export function StatisticsScreen({}: Props) {
     () => storedCardSeries.reduce((sum, item) => sum + item.value, 0),
     [storedCardSeries],
   );
+
+  /** 最近 6 个月的支出趋势 */
+  const monthlyTrend = useMemo(
+    () =>
+      calculateMonthlySpendingTrend(
+        items,
+        subscriptions,
+        maintenanceLogs,
+        6,
+      ),
+    [items, subscriptions, maintenanceLogs],
+  );
+
+  const trendMaxTotal = useMemo(
+    () => monthlyTrend.reduce((max, row) => Math.max(max, row.total), 0),
+    [monthlyTrend],
+  );
+
+  const trendTotals = useMemo(() => {
+    const purchases = monthlyTrend.reduce((s, r) => s + r.purchases, 0);
+    const installments = monthlyTrend.reduce((s, r) => s + r.installments, 0);
+    const subscriptionsCost = monthlyTrend.reduce((s, r) => s + r.subscriptions, 0);
+    const maintenance = monthlyTrend.reduce((s, r) => s + r.maintenance, 0);
+    return {
+      purchases,
+      installments,
+      subscriptions: subscriptionsCost,
+      maintenance,
+      total: purchases + installments + subscriptionsCost + maintenance,
+    };
+  }, [monthlyTrend]);
+
+  /** 当前月相比上月的变化百分比 */
+  const trendMoMChange = useMemo(() => {
+    if (monthlyTrend.length < 2) return null;
+    const current = monthlyTrend[monthlyTrend.length - 1];
+    const previous = monthlyTrend[monthlyTrend.length - 2];
+    if (previous.total <= 0) return null;
+    return ((current.total - previous.total) / previous.total) * 100;
+  }, [monthlyTrend]);
+
+  /** TOP 5 日均成本最高的在用资产（含已售出盈利的资产不计入） */
+  const topDailyCostAssets = useMemo(() => {
+    return items
+      .filter(item => item.status === 'active' || item.status === 'archived')
+      .map(item => {
+        const archivedReason =
+          item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+        // 已售出资产已离手，不参与排行
+        if (item.status === 'archived' && archivedReason === 'sold') {
+          return null;
+        }
+        const activeDays = calculateOneTimeItemActiveDays(item);
+        const dailyCost = calculateDailyCost(
+          item.total_price,
+          archivedReason === 'sold' ? item.salvage_value : 0,
+          activeDays,
+        );
+        return { item, activeDays, dailyCost };
+      })
+      .filter((entry): entry is { item: OneTimeItem; activeDays: number; dailyCost: number } => entry !== null)
+      .sort((a, b) => b.dailyCost - a.dailyCost)
+      .slice(0, 5);
+  }, [items]);
+
+  /** 订阅年度预算投影 */
+  const subscriptionProjection = useMemo(() => {
+    const rows = subscriptions
+      .filter(sub => sub.status === 'active')
+      .map(sub => {
+        const cyclesPerYear =
+          sub.billing_cycle === 'monthly'
+            ? 12
+            : sub.billing_cycle === 'quarterly'
+              ? 4
+              : 1;
+        return {
+          id: sub.id,
+          name: sub.name,
+          yearlyCost: sub.cycle_price * cyclesPerYear,
+        };
+      })
+      .sort((a, b) => b.yearlyCost - a.yearlyCost);
+
+    const totalYearly = rows.reduce((s, r) => s + r.yearlyCost, 0);
+    const totalDaily = totalYearly / 365;
+    return { rows, totalYearly, totalDaily };
+  }, [subscriptions]);
 
   const chartConfig = useMemo(
     () => ({
@@ -249,6 +403,157 @@ export function StatisticsScreen({}: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <Text style={styles.title}>月度支出趋势 · 最近 6 个月</Text>
+          <Text style={styles.subTitle}>
+            累计 {formatCurrency(trendTotals.total)} · 月均 {formatCurrency(trendTotals.total / Math.max(monthlyTrend.length, 1))}
+          </Text>
+          {trendMaxTotal <= 0 ? (
+            <EmptyState message="最近 6 个月暂无支出记录，添加资产或订阅后会出现趋势。" icon="📊" />
+          ) : (
+            <>
+              <View style={styles.trendChart}>
+                {monthlyTrend.map(row => {
+                  const heightPct = trendMaxTotal > 0 ? (row.total / trendMaxTotal) * 100 : 0;
+                  const isCurrent = row === monthlyTrend[monthlyTrend.length - 1];
+                  return (
+                    <View key={row.monthKey} style={styles.trendBarColumn}>
+                      <Text style={styles.trendBarValue}>
+                        {row.total > 0 ? formatCurrency(row.total) : '—'}
+                      </Text>
+                      <View style={styles.trendBarTrack}>
+                        <View
+                          style={[
+                            styles.trendBarFill,
+                            {
+                              height: `${Math.max(heightPct, row.total > 0 ? 6 : 0)}%`,
+                              backgroundColor: isCurrent
+                                ? THEME.colors.primary
+                                : THEME.colors.primaryLight,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.trendBarLabel}>{row.label.slice(5)}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+              {trendMoMChange !== null && (
+                <View style={styles.trendMoMRow}>
+                  <Text style={styles.trendMoMLabel}>环比上月</Text>
+                  <Text
+                    style={[
+                      styles.trendMoMValue,
+                      { color: trendMoMChange > 0 ? THEME.colors.dangerDark : THEME.colors.success },
+                    ]}
+                  >
+                    {trendMoMChange > 0 ? '↑' : trendMoMChange < 0 ? '↓' : '·'}
+                    {' '}
+                    {Math.abs(trendMoMChange).toFixed(1)}%
+                  </Text>
+                </View>
+              )}
+              <View style={styles.trendBreakdown}>
+                <View style={styles.trendBreakdownRow}>
+                  <View style={[styles.trendDot, { backgroundColor: THEME.colors.primary }]} />
+                  <Text style={styles.trendBreakdownLabel}>购置</Text>
+                  <Text style={styles.trendBreakdownValue}>{formatCurrency(trendTotals.purchases)}</Text>
+                </View>
+                <View style={styles.trendBreakdownRow}>
+                  <View style={[styles.trendDot, { backgroundColor: THEME.colors.warning }]} />
+                  <Text style={styles.trendBreakdownLabel}>分期</Text>
+                  <Text style={styles.trendBreakdownValue}>{formatCurrency(trendTotals.installments)}</Text>
+                </View>
+                <View style={styles.trendBreakdownRow}>
+                  <View style={[styles.trendDot, { backgroundColor: THEME.colors.success }]} />
+                  <Text style={styles.trendBreakdownLabel}>订阅</Text>
+                  <Text style={styles.trendBreakdownValue}>{formatCurrency(trendTotals.subscriptions)}</Text>
+                </View>
+                <View style={styles.trendBreakdownRow}>
+                  <View style={[styles.trendDot, { backgroundColor: THEME.colors.danger }]} />
+                  <Text style={styles.trendBreakdownLabel}>维修</Text>
+                  <Text style={styles.trendBreakdownValue}>{formatCurrency(trendTotals.maintenance)}</Text>
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>折旧汇总 · 资产价值衰减</Text>
+          <Text style={styles.subTitle}>
+            买入 {formatCurrency(depreciationSummary.totalPurchase)} · 现值 {formatCurrency(depreciationSummary.totalDepreciated)}
+          </Text>
+          {depreciationSummary.rows.length === 0 ? (
+            <EmptyState message="暂无可折旧的资产，先去添加并设置预期使用天数。" icon="📉" />
+          ) : (
+            <>
+              <View style={styles.depSummaryRow}>
+                <View style={styles.depSummaryBlock}>
+                  <Text style={styles.depSummaryLabel}>累计折旧损失</Text>
+                  <Text
+                    style={[
+                      styles.depSummaryValue,
+                      { color: THEME.colors.dangerDark },
+                    ]}
+                  >
+                    -{formatCurrency(depreciationSummary.totalDepreciationLoss)}
+                  </Text>
+                </View>
+                <View style={styles.depSummaryDivider} />
+                <View style={styles.depSummaryBlock}>
+                  <Text style={styles.depSummaryLabel}>整体折旧率</Text>
+                  <Text
+                    style={[
+                      styles.depSummaryValue,
+                      { color: THEME.colors.warning },
+                    ]}
+                  >
+                    {depreciationSummary.depreciationRate.toFixed(1)}%
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.legend}>
+                {depreciationSummary.rows.map(row => {
+                  const loss = row.purchaseValue - row.depreciatedValue;
+                  const rate =
+                    row.purchaseValue > 0
+                      ? (loss / row.purchaseValue) * 100
+                      : 0;
+                  return (
+                    <View key={row.categoryId} style={styles.legendRow}>
+                      <View style={styles.legendLeft}>
+                        <Text style={styles.depRowIcon}>{row.icon}</Text>
+                        <Text style={styles.legendName} numberOfLines={1}>
+                          {row.name} · {row.count} 件
+                        </Text>
+                      </View>
+                      <View style={styles.depRowRight}>
+                        <Text style={styles.depRowValue} numberOfLines={1}>
+                          {formatCurrency(row.depreciatedValue)} / {formatCurrency(row.purchaseValue)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.depRowRate,
+                            rate > 50
+                              ? { color: THEME.colors.dangerDark }
+                              : rate > 20
+                                ? { color: THEME.colors.warning }
+                                : { color: THEME.colors.success },
+                          ]}
+                        >
+                          -{rate.toFixed(0)}%
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+
         <View style={styles.card}>
           <Text style={styles.title}>在用资产 · 分类价值占比</Text>
           <Text style={styles.subTitle}>合计：{formatCurrency(totalAssets)}</Text>
@@ -311,6 +616,88 @@ export function StatisticsScreen({}: Props) {
                 hasLegend={false}
               />
               <LegendList series={storedCardSeries} total={totalStoredPrincipal} />
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>日均成本排行 · TOP 5</Text>
+          <Text style={styles.subTitle}>最贵的 5 个在用资产 · 帮助识别是否值得保留</Text>
+          {topDailyCostAssets.length === 0 ? (
+            <EmptyState message="暂无在用资产，添加资产并使用一段时间后可见排行。" icon="🏆" />
+          ) : (
+            <View style={styles.rankingList}>
+              {topDailyCostAssets.map((entry, index) => (
+                <View key={`rank-${entry.item.id}`} style={styles.rankingRow}>
+                  <View style={styles.rankingBadge}>
+                    <Text style={styles.rankingBadgeText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.rankingInfo}>
+                    <Text style={styles.rankingName} numberOfLines={1}>
+                      {entry.item.name}
+                    </Text>
+                    <Text style={styles.rankingMeta} numberOfLines={1}>
+                      {formatCurrency(entry.item.total_price)} · {entry.activeDays} 天
+                    </Text>
+                  </View>
+                  <View style={styles.rankingRight}>
+                    <Text style={styles.rankingValue}>
+                      {formatCurrency(entry.dailyCost)}
+                    </Text>
+                    <Text style={styles.rankingUnit}>/天</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>订阅年度预算 · 投影</Text>
+          <Text style={styles.subTitle}>
+            活跃订阅按当前周期推算未来 12 个月支出
+          </Text>
+          {subscriptionProjection.totalYearly === 0 ? (
+            <EmptyState message="暂无活跃订阅，添加订阅后可查看年度预算投影。" icon="📅" />
+          ) : (
+            <>
+              <View style={styles.projSummaryRow}>
+                <View style={styles.projSummaryBlock}>
+                  <Text style={styles.projSummaryLabel}>年度预算</Text>
+                  <Text style={[styles.projSummaryValue, { color: THEME.colors.primaryDark }]}>
+                    {formatCurrency(subscriptionProjection.totalYearly)}
+                  </Text>
+                </View>
+                <View style={styles.depSummaryDivider} />
+                <View style={styles.projSummaryBlock}>
+                  <Text style={styles.projSummaryLabel}>月均</Text>
+                  <Text style={[styles.projSummaryValue, { color: THEME.colors.warning }]}>
+                    {formatCurrency(subscriptionProjection.totalYearly / 12)}
+                  </Text>
+                </View>
+                <View style={styles.depSummaryDivider} />
+                <View style={styles.projSummaryBlock}>
+                  <Text style={styles.projSummaryLabel}>日均</Text>
+                  <Text style={[styles.projSummaryValue, { color: THEME.colors.success }]}>
+                    {formatCurrency(subscriptionProjection.totalDaily)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.legend}>
+                {subscriptionProjection.rows.map((row, index) => (
+                  <View key={`proj-${row.id}`} style={styles.legendRow}>
+                    <View style={styles.legendLeft}>
+                      <View style={[styles.legendSwatch, { backgroundColor: PALETTE[index % PALETTE.length] }]} />
+                      <Text style={styles.legendName} numberOfLines={1}>
+                        {row.name}
+                      </Text>
+                    </View>
+                    <Text style={styles.legendMeta} numberOfLines={1}>
+                      {formatCurrency(row.yearlyCost)}/年
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </>
           )}
         </View>
@@ -388,5 +775,255 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.xs,
     fontWeight: '700',
     color: THEME.colors.textSecondary,
+  },
+  depSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    marginBottom: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+  },
+  depSummaryBlock: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  depSummaryDivider: {
+    width: 1.5,
+    height: 32,
+    backgroundColor: THEME.colors.border,
+    marginHorizontal: THEME.spacing.sm,
+  },
+  depSummaryLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  depSummaryValue: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  depRowIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  depRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  depRowValue: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  depRowRate: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    minWidth: 40,
+    textAlign: 'right',
+  },
+  trendChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
+    height: 160,
+    marginTop: THEME.spacing.sm,
+    marginBottom: THEME.spacing.md,
+    paddingHorizontal: 4,
+  },
+  trendBarColumn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+    marginHorizontal: 2,
+    gap: 4,
+  },
+  trendBarValue: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    textAlign: 'center',
+    minHeight: 24,
+  },
+  trendBarTrack: {
+    width: '70%',
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    overflow: 'hidden',
+    minHeight: 80,
+  },
+  trendBarFill: {
+    width: '100%',
+    backgroundColor: THEME.colors.primary,
+    borderRadius: 2,
+  },
+  trendBarLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  trendMoMRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: THEME.spacing.sm,
+    marginBottom: THEME.spacing.sm,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+    alignSelf: 'stretch',
+  },
+  trendMoMLabel: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  trendMoMValue: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+  },
+  trendBreakdown: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: THEME.spacing.sm,
+    marginTop: THEME.spacing.xs,
+  },
+  trendBreakdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: '45%',
+    paddingVertical: 6,
+    paddingHorizontal: THEME.spacing.sm,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+  },
+  trendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: THEME.colors.borderDark,
+  },
+  trendBreakdownLabel: {
+    flex: 1,
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  trendBreakdownValue: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '900',
+    color: THEME.colors.textPrimary,
+  },
+  rankingList: {
+    alignSelf: 'stretch',
+    marginTop: THEME.spacing.sm,
+    gap: THEME.spacing.sm,
+  },
+  rankingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+  },
+  rankingBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    backgroundColor: THEME.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankingBadgeText: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+    color: THEME.colors.surface,
+  },
+  rankingInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  rankingName: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  rankingMeta: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  rankingRight: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 2,
+  },
+  rankingValue: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
+    color: THEME.colors.dangerDark,
+  },
+  rankingUnit: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+  },
+  projSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    marginBottom: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.md,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius,
+  },
+  projSummaryBlock: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  projSummaryLabel: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  projSummaryValue: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '900',
+    fontFamily: THEME.fontFamily.pixel,
   },
 });

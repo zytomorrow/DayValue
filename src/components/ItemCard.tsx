@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-na
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
 import {
+  calculateAssetHealth,
   calculateDaysUsed,
   calculateDailyCost,
   calculateDailyDebt,
@@ -16,6 +17,7 @@ import { StatusBadge } from './StatusBadge';
 import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 import { EntityCover } from './EntityCover';
 import { ServiceProgressBar } from './ServiceProgressBar';
+import { HealthBadge } from './HealthBadge';
 import type { OneTimeItem } from '../types';
 
 type ItemCardLayout = 'list' | 'grid';
@@ -48,6 +50,13 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
   const showServiceProgress =
     !isGrid && serviceProgress !== null && serviceProgress.expectedDays !== null;
 
+  // 健康度徽章：仅在有评估意义时显示（已设置寿命或保修）
+  const assetHealth =
+    !isUnredeemed && serviceProgress !== null
+      ? calculateAssetHealth(item, serviceProgress)
+      : null;
+  const showHealthBadge = assetHealth !== null && assetHealth.grade !== 'unknown';
+
   const archivedLabel =
     item.status !== 'archived'
       ? undefined
@@ -75,13 +84,20 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
     return (
       <CardShell onPress={onPress} variant={variant} style={[styles.gridCard, style]}>
         <View style={styles.gridTop}>
-          <EntityCover
-            imageUri={imageUri}
-            icon={icon}
-            size={52}
-            iconSize={26}
-            backgroundColor={variantColors.iconBg + '30'}
-          />
+          <View style={styles.gridCoverWrap}>
+            <EntityCover
+              imageUri={imageUri}
+              icon={icon}
+              size={52}
+              iconSize={26}
+              backgroundColor={variantColors.iconBg + '30'}
+            />
+            {showHealthBadge && assetHealth && (
+              <View style={styles.gridHealthOverlay}>
+                <HealthBadge grade={assetHealth.grade} compact />
+              </View>
+            )}
+          </View>
           <View style={styles.gridTopContent}>
             <View style={styles.gridBadgeRow}>
               <StatusBadge status={item.status} labelOverride={archivedLabel} />
@@ -134,6 +150,9 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
           <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.category}>{category.name}</Text>
         </View>
+        {showHealthBadge && assetHealth && (
+          <HealthBadge grade={assetHealth.grade} compact style={styles.headerHealth} />
+        )}
         <StatusBadge status={item.status} labelOverride={archivedLabel} />
       </View>
 
@@ -221,6 +240,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: THEME.spacing.md,
+  },
+  headerHealth: {
+    marginRight: THEME.spacing.xs,
+  },
+  gridCoverWrap: {
+    position: 'relative',
+  },
+  gridHealthOverlay: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    zIndex: 2,
   },
   headerInfo: {
     flex: 1,

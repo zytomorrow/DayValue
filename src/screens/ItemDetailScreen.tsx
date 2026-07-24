@@ -5,14 +5,19 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { OneTimeItem, RootStackParamList } from '../types';
+import type { MaintenanceLog, OneTimeItem, RootStackParamList } from '../types';
 import {
+  createMaintenanceLog,
+  deleteMaintenanceLog,
+  deleteMaintenanceLogsByItem,
   deleteOneTimeItem,
+  getMaintenanceLogsByItem,
   getOneTimeItemById,
   pauseOneTimeItem,
   redeemOneTimeItem,
@@ -20,6 +25,7 @@ import {
   sellOneTimeItem,
 } from '../database';
 import {
+  calculateAssetHealth,
   calculateDailyCost,
   calculateDailyDebt,
   calculateDepreciatedValue,
@@ -28,12 +34,13 @@ import {
   calculateOneTimeItemActiveDays,
   calculateRealizedProfit,
   calculateServiceProgress,
+  calculateWarrantyInfo,
   isProfitableSale,
 } from '../utils/calculations';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { BrutalButton, DatePickerField, EntityCover, PixelInput, ServiceProgressBar, ShareModal, StatusBadge } from '../components';
+import { BrutalButton, DatePickerField, EntityCover, HealthBadge, PixelInput, ServiceProgressBar, ShareModal, StatusBadge } from '../components';
 import type { ShareCardData } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
 import { alertConfirm, alertError, alertSuccess } from '../utils/pixelAlert';
@@ -58,6 +65,13 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const [redeemModalVisible, setRedeemModalVisible] = useState(false);
   const [redeemBusy, setRedeemBusy] = useState(false);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
+  const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
+  const [maintModalVisible, setMaintModalVisible] = useState(false);
+  const [maintDate, setMaintDate] = useState(getTodayString());
+  const [maintCost, setMaintCost] = useState('');
+  const [maintTitle, setMaintTitle] = useState('');
+  const [maintDescription, setMaintDescription] = useState('');
+  const [maintBusy, setMaintBusy] = useState(false);
   const redeemScale = useRef(new Animated.Value(0.9)).current;
   const redeemShakeX = useRef(new Animated.Value(0)).current;
   const redeemColor = useRef(new Animated.Value(0)).current;
@@ -69,8 +83,12 @@ export function ItemDetailScreen({ route, navigation }: Props) {
 
   const loadItem = useCallback(async () => {
     try {
-      const data = await getOneTimeItemById(db, itemId);
+      const [data, logs] = await Promise.all([
+        getOneTimeItemById(db, itemId),
+        getMaintenanceLogsByItem(db, itemId),
+      ]);
       setItem(data);
+      setMaintenanceLogs(logs);
       if (data) {
         navigation.setOptions({ title: data.name });
       }
@@ -88,6 +106,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   async function handleDelete() {
     alertConfirm('确认删除', `确定要删除“${item?.name}”吗？此操作不可撤销。`, async () => {
       await deleteEntityImageAsync(item?.image_uri);
+      await deleteMaintenanceLogsByItem(db, itemId);
       await deleteOneTimeItem(db, itemId);
       navigation.goBack();
     }, { confirmText: '删除', destructive: true });
@@ -220,6 +239,54 @@ export function ItemDetailScreen({ route, navigation }: Props) {
     }
   }
 
+  async function handleAddMaintenance() {
+    if (!item || maintBusy) return;
+    if (!maintTitle.trim()) {
+      alertError('提示', '请输入维修标题');
+      return;
+    }
+    const costNum = parseFloat(maintCost);
+    if (Number.isNaN(costNum) || costNum < 0) {
+      alertError('提示', '请输入有效的维修成本（≥ 0）');
+      return;
+    }
+    if (maintDate > getTodayString()) {
+      alertError('提示', '维修日期不能晚于今天');
+      return;
+    }
+
+    setMaintBusy(true);
+    try {
+      await createMaintenanceLog(db, {
+        item_id: itemId,
+        log_date: maintDate,
+        cost: costNum,
+        title: maintTitle.trim(),
+        description: maintDescription.trim() ? maintDescription.trim() : null,
+      });
+      setMaintModalVisible(false);
+      setMaintTitle('');
+      setMaintCost('');
+      setMaintDescription('');
+      await loadItem();
+    } catch (error) {
+      alertError('错误', error instanceof Error ? error.message : '保存维修记录失败');
+    } finally {
+      setMaintBusy(false);
+    }
+  }
+
+  async function handleDeleteMaintenance(logId: number) {
+    alertConfirm('删除维修记录', '确定要删除这条维修记录吗？', async () => {
+      try {
+        await deleteMaintenanceLog(db, logId);
+        await loadItem();
+      } catch (error) {
+        alertError('错误', error instanceof Error ? error.message : '删除失败');
+      }
+    }, { confirmText: '删除', destructive: true });
+  }
+
   if (!item) {
     return (
       <View style={styles.loading}>
@@ -248,6 +315,9 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const serviceProgress = calculateServiceProgress(item, activeDays);
   const depreciatedValue = calculateDepreciatedValue(item, activeDays);
   const hasExpectedLife = serviceProgress.expectedDays !== null;
+
+  const warrantyInfo = calculateWarrantyInfo(item);
+  const assetHealth = calculateAssetHealth(item, serviceProgress);
 
   const installmentPremium = isUnredeemed
     ? calculateInstallmentPremium(
@@ -296,6 +366,15 @@ export function ItemDetailScreen({ route, navigation }: Props) {
             }
           />
         </View>
+        {assetHealth.grade !== 'unknown' && (
+          <View style={styles.healthRow}>
+            <Text style={styles.healthRowLabel}>健康度</Text>
+            <HealthBadge grade={assetHealth.grade} score={assetHealth.score} />
+            <Text style={styles.healthRowHint}>
+              服役 {assetHealth.breakdown.service} · 保修 {assetHealth.breakdown.warranty} · 状态 {assetHealth.breakdown.status}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View
@@ -338,7 +417,40 @@ export function ItemDetailScreen({ route, navigation }: Props) {
             {isProfitableSold && (
               <InfoRow label="盈利金额" value={formatCurrency(realizedProfit)} />
             )}
+            {warrantyInfo.status !== 'none' && warrantyInfo.expiryDate && (
+              <InfoRow
+                label="保修到期"
+                value={`${formatDate(warrantyInfo.expiryDate)}${
+                  warrantyInfo.remainingDays !== null
+                    ? warrantyInfo.remainingDays >= 0
+                      ? ` · 剩 ${warrantyInfo.remainingDays} 天`
+                      : ` · 已过保 ${Math.abs(warrantyInfo.remainingDays)} 天`
+                    : ''
+                }`}
+              />
+            )}
+            {item.purchase_channel && (
+              <InfoRow label="购买渠道" value={item.purchase_channel} />
+            )}
+            {item.serial_number && (
+              <InfoRow label="序列号" value={item.serial_number} />
+            )}
+            {maintenanceLogs.length > 0 && (
+              <InfoRow
+                label="累计维修成本"
+                value={formatCurrency(
+                  maintenanceLogs.reduce((sum, log) => sum + log.cost, 0),
+                )}
+              />
+            )}
           </>
+        )}
+
+        {item.notes && (
+          <View style={infoStyles.notesRow}>
+            <Text style={infoStyles.label}>备注</Text>
+            <Text style={infoStyles.notesValue}>{item.notes}</Text>
+          </View>
         )}
 
         {isPaused && (
@@ -377,6 +489,31 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         </View>
       )}
 
+      {(warrantyInfo.status === 'expiring' || warrantyInfo.status === 'expired') &&
+        warrantyInfo.expiryDate && (
+          <View
+            style={[
+              styles.warrantyCard,
+              warrantyInfo.status === 'expired'
+                ? { borderColor: THEME.colors.dangerDark, backgroundColor: '#FFF0EE' }
+                : { borderColor: THEME.colors.warning, backgroundColor: '#FFF8E1' },
+            ]}
+          >
+            <Text style={styles.warrantyTitle}>
+              {warrantyInfo.status === 'expired' ? '🛠️ 已过保' : '⏳ 保修即将到期'}
+            </Text>
+            <Text style={styles.warrantyHint}>
+              保修到期日：{formatDate(warrantyInfo.expiryDate)}
+              {warrantyInfo.remainingDays !== null
+                ? warrantyInfo.remainingDays >= 0
+                  ? `，剩余 ${warrantyInfo.remainingDays} 天`
+                  : `，已过保 ${Math.abs(warrantyInfo.remainingDays)} 天`
+                : ''}
+              。过保后维修需自理，建议关注备件与官方售后。
+            </Text>
+          </View>
+        )}
+
       {isUnredeemed && installmentPremium > 0 && (
         <View style={styles.bloodCard}>
           <Text style={styles.bloodTitle}>🩸 分期血本警示</Text>
@@ -394,6 +531,60 @@ export function ItemDetailScreen({ route, navigation }: Props) {
           <Text style={styles.bloodHint}>
             相比全款购买，选择分期会让你承担额外成本。
           </Text>
+        </View>
+      )}
+
+      {!isUnredeemed && (
+        <View style={styles.maintCard}>
+          <View style={styles.maintHeader}>
+            <Text style={styles.maintTitle}>🧰 维修 / 保养记录</Text>
+            <TouchableOpacity
+              style={styles.maintAddBtn}
+              onPress={() => {
+                setMaintDate(getTodayString());
+                setMaintTitle('');
+                setMaintCost('');
+                setMaintDescription('');
+                setMaintModalVisible(true);
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.maintAddBtnText}>+ 新增</Text>
+            </TouchableOpacity>
+          </View>
+          {maintenanceLogs.length === 0 ? (
+            <Text style={styles.maintEmpty}>
+              还没有维修记录。记录每次维修可帮助回顾真实持有成本。
+            </Text>
+          ) : (
+            <View style={styles.maintList}>
+              {maintenanceLogs.map(log => (
+                <View key={log.id} style={styles.maintRow}>
+                  <View style={styles.maintRowMain}>
+                    <View style={styles.maintRowHeader}>
+                      <Text style={styles.maintRowTitle} numberOfLines={1}>
+                        {log.title}
+                      </Text>
+                      <Text style={styles.maintRowCost}>
+                        {formatCurrency(log.cost)}
+                      </Text>
+                    </View>
+                    <Text style={styles.maintRowMeta}>
+                      {formatDate(log.log_date)}
+                      {log.description ? ` · ${log.description}` : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.maintRowDelete}
+                    onPress={() => handleDeleteMaintenance(log.id)}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={styles.maintRowDeleteText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -621,6 +812,60 @@ export function ItemDetailScreen({ route, navigation }: Props) {
         </View>
       </Modal>
 
+      <Modal visible={maintModalVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>新增维修 / 保养记录</Text>
+            <Text style={styles.modalDesc}>
+              记录每次维修或保养的成本，便于回看资产的真实持有开销。
+            </Text>
+            <PixelInput
+              label="标题"
+              value={maintTitle}
+              onChangeText={setMaintTitle}
+              placeholder="例如：换电池 / 屏幕维修"
+            />
+            <DatePickerField
+              label="维修日期"
+              value={maintDate}
+              onChange={setMaintDate}
+            />
+            <PixelInput
+              label="成本 (¥)"
+              value={maintCost}
+              onChangeText={setMaintCost}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+            />
+            <PixelInput
+              label="备注（可选）"
+              value={maintDescription}
+              onChangeText={setMaintDescription}
+              placeholder="例如：官方售后 / 自费维修..."
+              multiline
+              style={styles.maintDescInput}
+            />
+            <View style={styles.modalActions}>
+              <BrutalButton
+                title="保存记录"
+                onPress={handleAddMaintenance}
+                loading={maintBusy}
+                variant="primary"
+                size="md"
+                style={styles.modalBtn}
+              />
+              <BrutalButton
+                title="取消"
+                onPress={() => setMaintModalVisible(false)}
+                variant="outline"
+                size="md"
+                style={styles.modalBtn}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <ShareModal
         visible={shareData !== null}
         data={shareData}
@@ -655,6 +900,17 @@ const infoStyles = StyleSheet.create({
     fontSize: THEME.fontSize.md,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
+  },
+  notesRow: {
+    paddingVertical: THEME.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.colors.border,
+  },
+  notesValue: {
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textPrimary,
+    marginTop: THEME.spacing.xs,
+    lineHeight: 20,
   },
 });
 
@@ -853,5 +1109,138 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.xs,
     color: THEME.colors.textSecondary,
     lineHeight: 18,
+  },
+  healthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+    marginTop: THEME.spacing.md,
+    paddingTop: THEME.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.border,
+    flexWrap: 'wrap',
+  },
+  healthRowLabel: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    fontWeight: '700',
+  },
+  healthRowHint: {
+    fontSize: 10,
+    color: THEME.colors.textLight,
+    flex: 1,
+    minWidth: 120,
+  },
+  warrantyCard: {
+    marginTop: THEME.spacing.md,
+    padding: THEME.spacing.md,
+    borderRadius: THEME.borderRadius,
+    borderWidth: 2,
+  },
+  warrantyTitle: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    marginBottom: THEME.spacing.xs,
+  },
+  warrantyHint: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textPrimary,
+    lineHeight: 18,
+  },
+  maintCard: {
+    backgroundColor: THEME.colors.surface,
+    ...THEME.pixelBorder,
+    ...THEME.pixelShadow,
+    padding: THEME.spacing.lg,
+    marginBottom: THEME.spacing.lg,
+  },
+  maintHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: THEME.spacing.sm,
+  },
+  maintTitle: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  maintAddBtn: {
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xs,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.primary,
+    borderRadius: 4,
+    backgroundColor: THEME.colors.primaryLight + '20',
+  },
+  maintAddBtnText: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.primaryDark,
+  },
+  maintEmpty: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
+  },
+  maintList: {
+    gap: THEME.spacing.xs,
+  },
+  maintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: THEME.spacing.sm,
+    paddingHorizontal: THEME.spacing.sm,
+    backgroundColor: THEME.colors.background,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    borderRadius: 4,
+  },
+  maintRowMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  maintRowHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  maintRowTitle: {
+    flex: 1,
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    marginRight: THEME.spacing.sm,
+  },
+  maintRowCost: {
+    fontSize: THEME.fontSize.xs,
+    fontWeight: '800',
+    color: THEME.colors.dangerDark,
+  },
+  maintRowMeta: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+  },
+  maintRowDelete: {
+    width: 28,
+    height: 28,
+    marginLeft: THEME.spacing.sm,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    backgroundColor: THEME.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  maintRowDeleteText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: THEME.colors.dangerDark,
+    lineHeight: 18,
+  },
+  maintDescInput: {
+    marginBottom: THEME.spacing.md,
   },
 });

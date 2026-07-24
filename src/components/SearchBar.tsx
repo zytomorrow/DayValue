@@ -1,0 +1,94 @@
+/**
+ * SearchBar - 像素风搜索框
+ *
+ * 用于列表页内联搜索，支持清除按钮与受控文本。
+ */
+import React from 'react';
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { THEME } from '../utils/constants';
+
+interface SearchBarProps {
+  value: string;
+  onChange: (text: string) => void;
+  placeholder?: string;
+  style?: StyleProp<ViewStyle>;
+}
+
+export function SearchBar({
+  value,
+  onChange,
+  placeholder = '搜索...',
+  style,
+}: SearchBarProps) {
+  return (
+    <View style={[styles.container, style]}>
+      <Text style={styles.icon}>🔍</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={THEME.colors.textLight}
+        autoCapitalize="none"
+        autoCorrect={false}
+        style={styles.input}
+        returnKeyType="search"
+      />
+      {value.length > 0 ? (
+        <TouchableOpacity
+          style={styles.clearBtn}
+          onPress={() => onChange('')}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.clearIcon}>×</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.colors.surface,
+    borderWidth: 2,
+    borderColor: THEME.colors.borderDark,
+    borderRadius: THEME.borderRadius,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: 0,
+    marginBottom: THEME.spacing.sm,
+  },
+  icon: {
+    fontSize: 14,
+    marginRight: THEME.spacing.xs,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: THEME.spacing.sm + 2,
+    fontSize: THEME.fontSize.md,
+    color: THEME.colors.textPrimary,
+  },
+  clearBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: THEME.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearIcon: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: THEME.colors.textSecondary,
+    lineHeight: 14,
+  },
+});

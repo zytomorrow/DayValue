@@ -8,7 +8,7 @@ interface TableColumnInfo {
 }
 
 /** 当前数据库结构版本号，备份/恢复时会用来校验兼容性。 */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 12;
 
 async function getTableColumnNames(
   db: SQLiteDatabase,
@@ -141,6 +141,9 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       && userVersion !== 6
       && userVersion !== 7
       && userVersion !== 8
+      && userVersion !== 9
+      && userVersion !== 10
+      && userVersion !== 11
     ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
@@ -219,6 +222,41 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       workingVersion = 9;
     }
 
+    if (workingVersion === 9) {
+      await current.execAsync(`
+        ALTER TABLE OneTimeItems
+          ADD COLUMN warranty_expiry_date TEXT;
+      `);
+      workingVersion = 10;
+    }
+
+    if (workingVersion === 10) {
+      await current.execAsync(`
+        ALTER TABLE OneTimeItems ADD COLUMN notes TEXT;
+        ALTER TABLE OneTimeItems ADD COLUMN purchase_channel TEXT;
+        ALTER TABLE OneTimeItems ADD COLUMN serial_number TEXT;
+      `);
+      workingVersion = 11;
+    }
+
+    if (workingVersion === 11) {
+      await current.execAsync(`
+        CREATE TABLE IF NOT EXISTS MaintenanceLogs (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          item_id      INTEGER NOT NULL,
+          log_date     TEXT    NOT NULL,
+          cost         REAL    NOT NULL DEFAULT 0 CHECK(cost >= 0),
+          title        TEXT    NOT NULL,
+          description  TEXT,
+          created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (item_id) REFERENCES OneTimeItems(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_maintenance_logs_item_id ON MaintenanceLogs(item_id);
+        CREATE INDEX IF NOT EXISTS idx_maintenance_logs_date ON MaintenanceLogs(log_date);
+      `);
+      workingVersion = 12;
+    }
+
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS OneTimeItems (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,6 +277,10 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         down_payment       REAL    DEFAULT 0,
         end_date           TEXT,
         expected_life_days INTEGER CHECK(expected_life_days IS NULL OR expected_life_days > 0),
+        warranty_expiry_date TEXT,
+        notes              TEXT,
+        purchase_channel   TEXT,
+        serial_number      TEXT,
         CHECK(is_installment = 1 OR (installment_months IS NULL AND monthly_payment IS NULL)),
         CHECK(is_installment = 0 OR (
           installment_months IS NOT NULL
@@ -273,6 +315,22 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
     `);
 
     await current.execAsync(`
+      CREATE TABLE IF NOT EXISTS MaintenanceLogs (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id      INTEGER NOT NULL,
+        log_date     TEXT    NOT NULL,
+        cost         REAL    NOT NULL DEFAULT 0 CHECK(cost >= 0),
+        title        TEXT    NOT NULL,
+        description  TEXT,
+        created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (item_id) REFERENCES OneTimeItems(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_maintenance_logs_item_id ON MaintenanceLogs(item_id);
+      CREATE INDEX IF NOT EXISTS idx_maintenance_logs_date ON MaintenanceLogs(log_date);
+    `);
+
+    await current.execAsync(`
       CREATE TABLE IF NOT EXISTS StoredCards (
         id                INTEGER PRIMARY KEY AUTOINCREMENT,
         name              TEXT    NOT NULL,
@@ -304,6 +362,10 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       'expected_life_days',
       'INTEGER CHECK(expected_life_days IS NULL OR expected_life_days > 0)',
     );
+    await ensureColumn(current, 'OneTimeItems', 'warranty_expiry_date', 'TEXT');
+    await ensureColumn(current, 'OneTimeItems', 'notes', 'TEXT');
+    await ensureColumn(current, 'OneTimeItems', 'purchase_channel', 'TEXT');
+    await ensureColumn(current, 'OneTimeItems', 'serial_number', 'TEXT');
 
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS Categories (

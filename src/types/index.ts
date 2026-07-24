@@ -32,6 +32,33 @@ export interface OneTimeItem {
   end_date: string | null;
   /** 预期使用天数（用于服役进度与折旧估算），为空表示未设置 */
   expected_life_days: number | null;
+  /** 保修到期日期（YYYY-MM-DD），为空表示未记录 */
+  warranty_expiry_date: string | null;
+  /** 用户备注 / 笔记（自由文本） */
+  notes: string | null;
+  /** 购买渠道（用于保修/售后追溯，例如：京东、Apple Store） */
+  purchase_channel: string | null;
+  /** 设备序列号（用于保修查询） */
+  serial_number: string | null;
+}
+
+/** 维修/保养日志（MaintenanceLogs 表） */
+export interface MaintenanceLog {
+  id: number;
+  item_id: number;
+  log_date: string;
+  cost: number;
+  title: string;
+  description: string | null;
+  created_at: string;
+}
+
+export interface MaintenanceLogInput {
+  item_id: number;
+  log_date: string;
+  cost: number;
+  title: string;
+  description?: string | null;
 }
 
 /** 周期订阅资产（Subscriptions 表） */
@@ -83,6 +110,10 @@ export interface OneTimeItemInput {
   status?: OneTimeItemStatus;
   end_date?: string | null;
   expected_life_days?: number | null;
+  warranty_expiry_date?: string | null;
+  notes?: string | null;
+  purchase_channel?: string | null;
+  serial_number?: string | null;
 }
 
 export interface SubscriptionInput {
