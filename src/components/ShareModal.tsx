@@ -1,6 +1,6 @@
 /**
  * ShareModal - 分享预览弹窗
- * 展示 ShareCard 预览，点击「分享」截图并调起系统分享面板。
+ * 展示 ShareCard 预览，支持调起系统分享或保存至相册。
  */
 import React, { useRef, useState } from 'react';
 import {
@@ -16,8 +16,8 @@ import ViewShot, { type ViewShotRef } from 'react-native-view-shot';
 import { THEME } from '../utils/constants';
 import { BrutalButton } from './BrutalButton';
 import { ShareCard, type ShareCardData } from './ShareCard';
-import { captureAndShareView } from '../utils/share';
-import { alertError } from '../utils/pixelAlert';
+import { captureAndShareView, captureAndSaveToGallery } from '../utils/share';
+import { alertError, alertSuccess } from '../utils/pixelAlert';
 
 interface ShareModalProps {
   visible: boolean;
@@ -25,19 +25,32 @@ interface ShareModalProps {
   onClose: () => void;
 }
 
+type Action = 'share' | 'save';
+
 export function ShareModal({ visible, data, onClose }: ShareModalProps) {
   const shotRef = useRef<ViewShotRef>(null);
-  const [sharing, setSharing] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const [busy, setBusy] = useState<Action | null>(null);
 
-  async function handleShare() {
-    if (!shotRef.current || sharing) return;
-    setSharing(true);
+  async function runCapture(action: Action) {
+    if (!shotRef.current || busy) return;
+    // 截图前回到顶部，确保整张卡片内容已完整渲染。
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    setBusy(action);
     try {
-      await captureAndShareView(shotRef);
+      if (action === 'share') {
+        await captureAndShareView(shotRef);
+      } else {
+        await captureAndSaveToGallery(shotRef);
+        alertSuccess('已保存', '分享卡片已保存到相册的 DayValue 相册。');
+      }
     } catch (error) {
-      alertError('分享失败', error instanceof Error ? error.message : '请稍后重试');
+      alertError(
+        action === 'share' ? '分享失败' : '保存失败',
+        error instanceof Error ? error.message : '请稍后重试',
+      );
     } finally {
-      setSharing(false);
+      setBusy(null);
     }
   }
 
@@ -47,6 +60,8 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
       : data?.kind === 'item'
         ? '分享资产卡片'
         : '分享订阅卡片';
+
+  const isBusy = busy !== null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -70,9 +85,10 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
           <View style={styles.previewWrap}>
             {data && (
               <ScrollView
+                ref={scrollRef}
                 style={styles.previewScroll}
                 contentContainerStyle={styles.previewContent}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator
                 bounces
               >
                 <ViewShot
@@ -88,12 +104,21 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
 
           <View style={styles.actions}>
             <BrutalButton
-              title={sharing ? '生成中...' : '📤 分享图片'}
-              onPress={handleShare}
+              title={busy === 'share' ? '生成中...' : '📤 分享图片'}
+              onPress={() => runCapture('share')}
               variant="primary"
               size="md"
-              loading={sharing}
-              disabled={sharing || !data}
+              loading={busy === 'share'}
+              disabled={isBusy || !data}
+              style={styles.actionBtn}
+            />
+            <BrutalButton
+              title={busy === 'save' ? '保存中...' : '💾 保存至相册'}
+              onPress={() => runCapture('save')}
+              variant="accent"
+              size="md"
+              loading={busy === 'save'}
+              disabled={isBusy || !data}
               style={styles.actionBtn}
             />
             <BrutalButton
@@ -101,12 +126,12 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
               onPress={onClose}
               variant="outline"
               size="md"
-              disabled={sharing}
+              disabled={isBusy}
               style={styles.actionBtn}
             />
           </View>
 
-          {sharing && (
+          {isBusy && (
             <View style={styles.loadingOverlay}>
               <ActivityIndicator color={THEME.colors.primary} />
             </View>
@@ -165,7 +190,7 @@ const styles = StyleSheet.create({
     color: THEME.colors.surface,
   },
   previewWrap: {
-    maxHeight: '70%',
+    maxHeight: '60%',
     paddingVertical: 16,
     alignItems: 'center',
     backgroundColor: THEME.colors.background,

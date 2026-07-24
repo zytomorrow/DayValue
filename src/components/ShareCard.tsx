@@ -56,7 +56,6 @@ export type ShareCardData =
     };
 
 const CARD_WIDTH = 320;
-const TOP_LIMIT = 5;
 
 export function ShareCard({ data }: { data: ShareCardData }) {
   return (
@@ -88,7 +87,6 @@ function SummaryBody({ data }: { data: Extract<ShareCardData, { kind: 'summary' 
       <View style={styles.heroBlock}>
         <Text style={styles.heroLabel}>今日日均成本</Text>
         <Text style={styles.heroValue}>{formatCurrency(data.assetDailyCost)}</Text>
-        <Text style={styles.heroUnit}>/ 天</Text>
       </View>
 
       <View style={styles.statsGrid}>
@@ -166,7 +164,7 @@ function EntryList({
         </Text>
       </View>
       <View style={styles.entryListBody}>
-        {entries.slice(0, TOP_LIMIT).map((entry, index) => (
+        {entries.map((entry, index) => (
           <View
             key={`${entry.name}-${index}`}
             style={[styles.entryRow, index > 0 && styles.entryRowDivider]}
@@ -183,9 +181,6 @@ function EntryList({
             </Text>
           </View>
         ))}
-        {entries.length > TOP_LIMIT && (
-          <Text style={styles.entryMore}>还有 {entries.length - TOP_LIMIT} 项未展示</Text>
-        )}
       </View>
     </View>
   );
@@ -221,7 +216,6 @@ function SingleBody({
       <View style={styles.heroBlock}>
         <Text style={styles.heroLabel}>{heroLabel}</Text>
         <Text style={styles.heroValue}>{formatCurrency(data.dailyCost)}</Text>
-        <Text style={styles.heroUnit}>/ 天</Text>
       </View>
 
       <View style={styles.statsGrid}>
@@ -376,12 +370,6 @@ const styles = StyleSheet.create({
     color: THEME.colors.primaryDark,
     letterSpacing: 1,
   },
-  heroUnit: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-    marginTop: 4,
-  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -468,13 +456,6 @@ const styles = StyleSheet.create({
   entryCost: {
     fontSize: 13,
     fontWeight: '900',
-  },
-  entryMore: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-    textAlign: 'center',
-    paddingVertical: 6,
   },
   singleHeader: {
     flexDirection: 'row',

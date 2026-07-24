@@ -18,7 +18,8 @@
       "package": "com.ther777.dayvalue",
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.INTERNET"
+        "android.permission.INTERNET",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -34,7 +35,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "允许 DayValue 访问你的照片，用于给资产、订阅和卡包上传封面图片。",
+          "photosPermission": "允许 DayValue 访问你的照片，用于给资产、订阅和卡包上传封面图片，以及保存分享卡片。",
           "colors": {
             "cropToolbarColor": "#1F2937",
             "cropToolbarIconColor": "#F9FAFB",
@@ -42,6 +43,14 @@
             "cropBackButtonIconColor": "#F9FAFB",
             "cropBackgroundColor": "#111827"
           }
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "允许 DayValue 访问你的照片，用于保存分享卡片到相册。",
+          "savePhotosPermission": "允许 DayValue 保存分享卡片到你的相册。",
+          "isAccessMediaLocationEnabled": false
         }
       ]
     ],

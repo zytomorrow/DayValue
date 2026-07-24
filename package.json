@@ -23,6 +23,7 @@
     "expo-file-system": "~55.0.10",
     "expo-font": "~55.0.0",
     "expo-image-picker": "~55.0.12",
+    "expo-media-library": "~17.1.7",
     "expo-sharing": "~55.0.0",
     "expo-splash-screen": "~55.0.10",
     "expo-sqlite": "~55.0.0",
