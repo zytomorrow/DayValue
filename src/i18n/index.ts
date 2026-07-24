@@ -1,6 +1,5 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import { getLocales } from 'expo-localization';
 import zhCN from './zh-CN.json';
 import enUS from './en-US.json';
 
@@ -12,6 +11,10 @@ export const SUPPORTED_LANGUAGES: { id: AppLanguage; name: string; nativeName: s
 
 function detectInitialLanguage(): AppLanguage {
   try {
+    // 延迟 require，避免 expo-localization 原生模块未链接时
+    // 在 import 阶段抛错导致整个应用启动闪退。
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getLocales } = require('expo-localization');
     const locales = getLocales();
     const lang = locales[0]?.languageCode ?? 'zh';
     return lang.startsWith('en') ? 'en-US' : 'zh-CN';

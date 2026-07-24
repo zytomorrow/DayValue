@@ -23,8 +23,10 @@ import {
   deleteStoredCard,
   getStoredCardById,
   updateStoredCard,
+  deleteAccessoriesByEntity,
 } from '../database';
 import {
+  AccessorySection,
   BrutalButton,
   CategoryPicker,
   DatePickerField,
@@ -240,6 +242,7 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
     alertConfirm('确认删除', '删除后无法恢复，确定要删除这张卡吗？', async () => {
       try {
         await deleteEntityImageAsync(originalImageUri);
+        await deleteAccessoriesByEntity(db, 'stored_card', editId);
         await deleteStoredCard(db, editId);
         navigation.goBack();
       } catch (error) {
@@ -375,6 +378,14 @@ export function AddEditStoredCardScreen({ route, navigation }: Props) {
               style={styles.archiveBtn}
             />
           </View>
+        ) : null}
+
+        {isEditing && editId !== undefined ? (
+          <AccessorySection
+            entityType="stored_card"
+            entityId={editId}
+            entityLabel="储值卡"
+          />
         ) : null}
 
         <View style={styles.actions}>

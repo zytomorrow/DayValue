@@ -37,3 +37,4 @@ export { PixelAlert } from './PixelAlert';
 export type { PixelAlertButton, PixelAlertProps } from './PixelAlert';
 export { PixelAlertRoot } from './PixelAlertRoot';
 export { SearchBar } from './SearchBar';
+export { AccessorySection } from './AccessorySection';

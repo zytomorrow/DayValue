@@ -89,10 +89,16 @@ export interface MaintenancePlanInput {
 /** 配件状态 */
 export type AccessoryStatus = 'in_use' | 'lost' | 'damaged';
 
+/** 配件所属实体类型：物品 / 订阅 / 储值卡 */
+export type AccessoryEntityType = 'item' | 'subscription' | 'stored_card';
+
 /** 资产配件（Accessories 表），如游戏机手柄、电脑键盘等 */
 export interface Accessory {
   id: number;
+  /** 关联实体 ID（按 entity_type 解释：OneTimeItems / Subscriptions / StoredCards 的 id） */
   item_id: number;
+  /** 关联实体类型 */
+  entity_type: AccessoryEntityType;
   name: string;
   /** 数量（≥1） */
   quantity: number;
@@ -106,7 +112,10 @@ export interface Accessory {
 }
 
 export interface AccessoryInput {
+  /** 关联实体 ID */
   item_id: number;
+  /** 关联实体类型，默认 'item' */
+  entity_type?: AccessoryEntityType;
   name: string;
   quantity?: number;
   unit_price?: number;

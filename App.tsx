@@ -38,7 +38,12 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 // 配置本地通知展示行为（前台收到时弹出提醒并播放声音）。
-configureNotifications();
+// 原生模块不可用时安全跳过，避免阻塞启动。
+try {
+  configureNotifications();
+} catch (error) {
+  console.warn('通知配置失败，已跳过', error);
+}
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 

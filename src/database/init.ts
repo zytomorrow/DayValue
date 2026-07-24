@@ -8,7 +8,7 @@ interface TableColumnInfo {
 }
 
 /** 当前数据库结构版本号，备份/恢复时会用来校验兼容性。 */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 async function getTableColumnNames(
   db: SQLiteDatabase,
@@ -147,6 +147,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       && userVersion !== 12
       && userVersion !== 13
       && userVersion !== 14
+      && userVersion !== 15
     ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
@@ -314,6 +315,21 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       workingVersion = 15;
     }
 
+    if (workingVersion === 15) {
+      // 为配件扩展实体类型，使其也能挂在订阅、储值卡上。
+      // item_id 列复用为通用实体 ID（SQLite 默认不强制外键，可安全跨表引用）。
+      await ensureColumn(
+        current,
+        'Accessories',
+        'entity_type',
+        `TEXT NOT NULL DEFAULT 'item' CHECK(entity_type IN ('item', 'subscription', 'stored_card'))`,
+      );
+      await current.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_accessories_entity ON Accessories(entity_type, item_id);
+      `);
+      workingVersion = 16;
+    }
+
     await current.execAsync(`
       CREATE TABLE IF NOT EXISTS OneTimeItems (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -428,11 +444,13 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         buy_date    TEXT,
         status      TEXT    NOT NULL DEFAULT 'in_use' CHECK(status IN ('in_use', 'lost', 'damaged')),
         notes       TEXT,
+        entity_type TEXT    NOT NULL DEFAULT 'item' CHECK(entity_type IN ('item', 'subscription', 'stored_card')),
         created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (item_id) REFERENCES OneTimeItems(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_accessories_item_id ON Accessories(item_id);
+      CREATE INDEX IF NOT EXISTS idx_accessories_entity ON Accessories(entity_type, item_id);
     `);
 
     await current.execAsync(`

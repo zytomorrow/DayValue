@@ -13,13 +13,14 @@ import {
   getSubscriptionById,
   deleteSubscription,
   archiveSubscription,
+  deleteAccessoriesByEntity,
 } from '../database';
 import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { BrutalButton, EntityCover, ShareModal, StatusBadge } from '../components';
+import { AccessorySection, BrutalButton, EntityCover, ShareModal, StatusBadge } from '../components';
 import type { ShareCardData } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
 import { alertConfirm } from '../utils/pixelAlert';
@@ -56,6 +57,7 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
   async function handleDelete() {
     alertConfirm('确认删除', `确定要删除“${sub?.name}”吗？此操作不可撤销。`, async () => {
       await deleteEntityImageAsync(sub?.image_uri);
+      await deleteAccessoriesByEntity(db, 'subscription', subscriptionId);
       await deleteSubscription(db, subscriptionId);
       navigation.goBack();
     }, { confirmText: '删除', destructive: true });
@@ -120,6 +122,12 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
         <InfoRow label="周期金额" value={formatCurrency(sub.cycle_price)} />
         <InfoRow label="开始日期" value={formatDate(sub.start_date)} />
       </View>
+
+      <AccessorySection
+        entityType="subscription"
+        entityId={sub.id}
+        entityLabel="订阅"
+      />
 
       <View style={styles.actions}>
         <BrutalButton

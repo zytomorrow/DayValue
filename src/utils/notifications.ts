@@ -6,8 +6,11 @@
  *  - 订阅即将续费
  *  - 储值卡长期未使用（沉睡）
  *  - 保养计划即将到期
+ *
+ * 注意：expo-notifications 是原生模块，若运行在未链接该模块的构建中，
+ * 顶层 import 会在应用启动时抛错导致闪退。因此这里采用延迟 require +
+ * try/catch，缺失原生模块时所有通知 API 安全降级为空操作。
  */
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { PermissionResponse } from 'expo-modules-core';
 import type { OneTimeItem, Subscription, StoredCard, MaintenancePlan } from '../types';
@@ -30,20 +33,49 @@ const MAX_SCHEDULED_NOTIFICATIONS = 30;
 /** 默认提醒触发时刻（本地 09:00），避免深夜打扰。 */
 const TRIGGER_HOUR = 9;
 
+/** expo-notifications 原生模块类型（仅用于类型推导） */
+type NotificationsModule = typeof import('expo-notifications');
+
+let notificationsModule: NotificationsModule | null | undefined;
+
+/**
+ * 延迟加载 expo-notifications 模块。
+ * 原生模块缺失时返回 null，调用方需做 null 守卫。
+ */
+function getNotifications(): NotificationsModule | null {
+  if (notificationsModule !== undefined) {
+    return notificationsModule;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    notificationsModule = require('expo-notifications');
+  } catch {
+    notificationsModule = null;
+  }
+  return notificationsModule ?? null;
+}
+
 /**
  * 配置通知处理器（在 App.tsx 顶层调用一次）。
  * 决定应用在前台时收到通知的展示行为。
+ * 原生模块不可用时安全跳过。
  */
 export function configureNotifications(): void {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+  } catch {
+    // 配置失败不阻塞应用。
+  }
 }
 
 /**
@@ -51,6 +83,9 @@ export function configureNotifications(): void {
  * Android 上会先创建「到期提醒」渠道（HIGH 重要性）。
  */
 export async function requestNotificationPermissionsAsync(): Promise<boolean> {
+  const Notifications = getNotifications();
+  if (!Notifications) return false;
+
   if (Platform.OS === 'android') {
     try {
       await Notifications.setNotificationChannelAsync(REMINDERS_CHANNEL_ID, {
@@ -91,6 +126,9 @@ export async function scheduleReminderNotificationsAsync(params: {
   /** 提前提醒天数：仅调度到期日落在 [0, advanceDays] 区间内的项。 */
   advanceDays: number;
 }): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
   await cancelAllScheduledNotificationsAsync();
 
   const { items, subscriptions, storedCards, maintenancePlans, advanceDays } = params;
@@ -156,13 +194,25 @@ export async function scheduleReminderNotificationsAsync(params: {
 
 /** 取消所有已调度的提醒通知。 */
 export async function cancelAllScheduledNotificationsAsync(): Promise<void> {
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch {
+    // 忽略
+  }
 }
 
 /** 获取已调度通知数量。 */
 export async function getScheduledNotificationCountAsync(): Promise<number> {
-  const list = await Notifications.getAllScheduledNotificationsAsync();
-  return list.length;
+  const Notifications = getNotifications();
+  if (!Notifications) return 0;
+  try {
+    const list = await Notifications.getAllScheduledNotificationsAsync();
+    return list.length;
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -192,16 +242,22 @@ async function scheduleOne(
   body: string,
   triggerDate: Date,
 ): Promise<void> {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-      sound: true,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: triggerDate,
-      channelId: REMINDERS_CHANNEL_ID,
-    },
-  });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+        channelId: REMINDERS_CHANNEL_ID,
+      },
+    });
+  } catch {
+    // 单条调度失败不影响其他通知。
+  }
 }
