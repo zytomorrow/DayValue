@@ -126,6 +126,7 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
               kind: 'subscription',
               name: sub.name,
               categoryIcon: icon,
+              imageUri: imageUri,
               categoryName: category.name,
               dailyCost,
               cyclePrice: sub.cycle_price,

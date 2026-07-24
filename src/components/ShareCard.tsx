@@ -4,13 +4,14 @@
  * 固定宽度，独立排版，保证截图稳定且美观。
  */
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { THEME } from '../utils/constants';
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 
 export type ShareItemEntry = {
   name: string;
   icon: string;
+  imageUri?: string | null;
   dailyCost: number;
   extra: string;
 };
@@ -33,6 +34,7 @@ export type ShareCardData =
       kind: 'item';
       name: string;
       categoryIcon: string;
+      imageUri?: string | null;
       categoryName: string;
       dailyCost: number;
       totalPrice: number;
@@ -45,6 +47,7 @@ export type ShareCardData =
       kind: 'subscription';
       name: string;
       categoryIcon: string;
+      imageUri?: string | null;
       categoryName: string;
       dailyCost: number;
       cyclePrice: number;
@@ -168,7 +171,7 @@ function EntryList({
             key={`${entry.name}-${index}`}
             style={[styles.entryRow, index > 0 && styles.entryRowDivider]}
           >
-            <Text style={styles.entryIcon}>{entry.icon}</Text>
+            <EntryCover icon={entry.icon} imageUri={entry.imageUri} size={22} />
             <Text style={styles.entryName} numberOfLines={1}>
               {entry.name}
             </Text>
@@ -198,7 +201,11 @@ function SingleBody({
     <>
       <View style={styles.singleHeader}>
         <View style={styles.singleIconWrap}>
-          <Text style={styles.singleIcon}>{data.categoryIcon}</Text>
+          {data.imageUri ? (
+            <Image source={{ uri: data.imageUri }} style={styles.singleImage} />
+          ) : (
+            <Text style={styles.singleIcon}>{data.categoryIcon}</Text>
+          )}
         </View>
         <View style={styles.singleMeta}>
           <Text style={styles.singleName} numberOfLines={2}>
@@ -261,6 +268,34 @@ function SingleBody({
         )}
       </View>
     </>
+  );
+}
+
+function EntryCover({
+  icon,
+  imageUri,
+  size,
+}: {
+  icon: string;
+  imageUri?: string | null;
+  size: number;
+}) {
+  if (imageUri) {
+    return (
+      <View
+        style={[
+          styles.entryIconWrap,
+          { width: size, height: size },
+        ]}
+      >
+        <Image source={{ uri: imageUri }} style={{ width: size, height: size }} />
+      </View>
+    );
+  }
+  return (
+    <Text style={[styles.entryIcon, { fontSize: Math.round(size * 0.8) }]}>
+      {icon}
+    </Text>
   );
 }
 
@@ -409,6 +444,14 @@ const styles = StyleSheet.create({
   entryIcon: {
     fontSize: 16,
   },
+  entryIconWrap: {
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: THEME.colors.borderDark,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   entryName: {
     flex: 1,
     fontSize: 13,
@@ -450,6 +493,11 @@ const styles = StyleSheet.create({
   },
   singleIcon: {
     fontSize: 22,
+  },
+  singleImage: {
+    width: 44,
+    height: 44,
+    resizeMode: 'cover',
   },
   singleMeta: {
     flex: 1,

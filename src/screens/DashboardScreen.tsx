@@ -633,6 +633,7 @@ export function DashboardScreen({ navigation }: Props) {
           return {
             name: item.name,
             icon: item.icon ?? cat.icon,
+            imageUri: item.image_uri,
             dailyCost: Number.isFinite(cost) ? cost : 0,
             extra: `${activeDays} 天`,
           };
@@ -645,6 +646,7 @@ export function DashboardScreen({ navigation }: Props) {
         return {
           name: sub.name,
           icon: sub.icon ?? cat.icon,
+          imageUri: sub.image_uri,
           dailyCost: Number.isFinite(cost) ? cost : 0,
           extra: sub.billing_cycle === 'monthly'
             ? '月付'
@@ -660,6 +662,7 @@ export function DashboardScreen({ navigation }: Props) {
         return {
           name: card.name,
           icon: card.icon ?? cat.icon,
+          imageUri: card.image_uri,
           dailyCost: Number.isFinite(cost) ? cost : 0,
           extra: card.card_type === 'amount'
             ? `${formatCurrency(card.current_balance)}`

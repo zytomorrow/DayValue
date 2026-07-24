@@ -377,6 +377,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               kind: 'item',
               name: item.name,
               categoryIcon: icon,
+              imageUri: imageUri,
               categoryName: category.name,
               dailyCost: safeDailyCost,
               totalPrice: item.total_price,
