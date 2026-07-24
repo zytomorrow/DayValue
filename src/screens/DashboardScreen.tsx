@@ -43,7 +43,9 @@ import {
   AssetSectionToolbar,
   AssetGroupedList,
   DashboardHeroHeader,
+  ShareModal,
 } from '../components';
+import type { ShareCardData } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
@@ -259,6 +261,7 @@ export function DashboardScreen({ navigation }: Props) {
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
+  const [shareData, setShareData] = useState<ShareCardData | null>(null);
   const [sortSheetTarget, setSortSheetTarget] = useState<TabKey | null>(null);
   const [selectedAssetCategoryId, setSelectedAssetCategoryId] = useState<string | null>(null);
   const [assetFilterSheetVisible, setAssetFilterSheetVisible] = useState(false);
@@ -620,6 +623,32 @@ export function DashboardScreen({ navigation }: Props) {
     return `共 ${filteredActiveItems.length} 件在用资产 · 数字越低越回本`;
   }, [filteredActiveItems.length, filteredRealizedProfit, selectedAssetCategory]);
 
+  const summaryShareData = useMemo<ShareCardData>(
+    () => ({
+      kind: 'summary',
+      assetDailyCost: filteredTotalAssetDailyCost,
+      assetCount: filteredActiveItems.length,
+      realizedProfit: filteredRealizedProfit,
+      subscriptionDailyCost: totalSubscriptionCost,
+      installmentDailyDebt: totalInstallmentDebt,
+      storedPrincipal: totalPrincipal,
+      storedCardCount: activeStoredCards.length,
+    }),
+    [
+      filteredTotalAssetDailyCost,
+      filteredActiveItems.length,
+      filteredRealizedProfit,
+      totalSubscriptionCost,
+      totalInstallmentDebt,
+      totalPrincipal,
+      activeStoredCards.length,
+    ],
+  );
+
+  const handleShareSummary = useCallback(() => {
+    setShareData(summaryShareData);
+  }, [summaryShareData]);
+
   const chrome = useMemo<DashboardChrome>(() => {
     if (activeTab === 'debts') {
       return {
@@ -976,6 +1005,7 @@ export function DashboardScreen({ navigation }: Props) {
           onPressStatistics={() => navigation.navigate('Statistics')}
           onPressSettings={() => navigation.navigate('Settings')}
           onPressHelp={() => setHelpModalVisible(true)}
+          onPressShare={handleShareSummary}
           onPressAssetFilterTrigger={() => setAssetFilterSheetVisible(true)}
           onClearAssetFilter={() => setSelectedAssetCategoryId(null)}
         />
@@ -1262,6 +1292,12 @@ export function DashboardScreen({ navigation }: Props) {
             </View>
           </TouchableOpacity>
         </Modal>
+
+        <ShareModal
+          visible={shareData !== null}
+          data={shareData}
+          onClose={() => setShareData(null)}
+        />
       </View>
     </SafeAreaView>
   );

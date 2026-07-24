@@ -27,6 +27,9 @@ export type {
   AssetCategorySheetProps,
 } from './AssetCategorySheet';
 export { DashboardHeroHeader } from './DashboardHeroHeader';
+export { ShareCard } from './ShareCard';
+export type { ShareCardData } from './ShareCard';
+export { ShareModal } from './ShareModal';
 export { PixelAlert } from './PixelAlert';
 export type { PixelAlertButton, PixelAlertProps } from './PixelAlert';
 export { PixelAlertRoot } from './PixelAlertRoot';

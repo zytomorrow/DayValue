@@ -18,7 +18,8 @@ import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { BrutalButton, EntityCover, StatusBadge } from '../components';
+import { BrutalButton, EntityCover, ShareModal, StatusBadge } from '../components';
+import type { ShareCardData } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
 import { alertConfirm } from '../utils/pixelAlert';
 
@@ -29,6 +30,7 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
   const { getCategoryInfo } = useCategories();
   const { subscriptionId } = route.params;
   const [sub, setSub] = useState<Subscription | null>(null);
+  const [shareData, setShareData] = useState<ShareCardData | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -118,6 +120,25 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
 
       <View style={styles.actions}>
         <BrutalButton
+          title="📤 分享卡片"
+          onPress={() => {
+            setShareData({
+              kind: 'subscription',
+              name: sub.name,
+              categoryIcon: icon,
+              categoryName: category.name,
+              dailyCost,
+              cyclePrice: sub.cycle_price,
+              cycleLabel,
+              startDate: sub.start_date,
+            });
+          }}
+          variant="outline"
+          size="md"
+          style={styles.actionBtn}
+        />
+
+        <BrutalButton
           title="编辑"
           onPress={() =>
             navigation.navigate('AddEditSubscription', { subscriptionId: sub.id })
@@ -145,6 +166,12 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
           style={styles.actionBtn}
         />
       </View>
+
+      <ShareModal
+        visible={shareData !== null}
+        data={shareData}
+        onClose={() => setShareData(null)}
+      />
     </ScrollView>
   );
 }

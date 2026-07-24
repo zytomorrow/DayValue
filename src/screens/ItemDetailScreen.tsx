@@ -31,7 +31,8 @@ import {
 import { formatCurrency, formatDate, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useCategories } from '../contexts/CategoriesContext';
-import { BrutalButton, DatePickerField, EntityCover, PixelInput, StatusBadge } from '../components';
+import { BrutalButton, DatePickerField, EntityCover, PixelInput, ShareModal, StatusBadge } from '../components';
+import type { ShareCardData } from '../components';
 import { deleteEntityImageAsync } from '../utils/entityImages';
 import { alertConfirm, alertError, alertSuccess } from '../utils/pixelAlert';
 
@@ -54,6 +55,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
 
   const [redeemModalVisible, setRedeemModalVisible] = useState(false);
   const [redeemBusy, setRedeemBusy] = useState(false);
+  const [shareData, setShareData] = useState<ShareCardData | null>(null);
   const redeemScale = useRef(new Animated.Value(0.9)).current;
   const redeemShakeX = useRef(new Animated.Value(0)).current;
   const redeemColor = useRef(new Animated.Value(0)).current;
@@ -361,6 +363,35 @@ export function ItemDetailScreen({ route, navigation }: Props) {
 
       <View style={styles.actions}>
         <BrutalButton
+          title="📤 分享卡片"
+          onPress={() => {
+            const safeDailyCost = Number.isFinite(dailyCost) ? dailyCost : 0;
+            const statusLabel = isUnredeemed
+              ? '分期中'
+              : isSold
+                ? '已售出'
+                : isPaused
+                  ? '已停用'
+                  : '在用';
+            setShareData({
+              kind: 'item',
+              name: item.name,
+              categoryIcon: icon,
+              categoryName: category.name,
+              dailyCost: safeDailyCost,
+              totalPrice: item.total_price,
+              buyDate: item.buy_date,
+              activeDays,
+              realizedProfit: isProfitableSold ? realizedProfit : null,
+              statusLabel,
+            });
+          }}
+          variant="outline"
+          size="md"
+          style={styles.actionBtn}
+        />
+
+        <BrutalButton
           title="编辑"
           onPress={() => navigation.navigate('AddEditItem', { itemId: item.id })}
           variant="primary"
@@ -552,6 +583,12 @@ export function ItemDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
       </Modal>
+
+      <ShareModal
+        visible={shareData !== null}
+        data={shareData}
+        onClose={() => setShareData(null)}
+      />
     </ScrollView>
   );
 }

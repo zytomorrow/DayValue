@@ -29,6 +29,7 @@ interface DashboardHeroHeaderProps {
   onPressStatistics: () => void;
   onPressSettings: () => void;
   onPressHelp: () => void;
+  onPressShare: () => void;
   onPressAssetFilterTrigger: () => void;
   onClearAssetFilter: () => void;
 }
@@ -49,6 +50,7 @@ export function DashboardHeroHeader({
   onPressStatistics,
   onPressSettings,
   onPressHelp,
+  onPressShare,
   onPressAssetFilterTrigger,
   onClearAssetFilter,
 }: DashboardHeroHeaderProps) {
@@ -66,6 +68,14 @@ export function DashboardHeroHeader({
       <View style={styles.titleRow}>
         <Text style={styles.title}>DayValue</Text>
         <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={onPressShare}
+            activeOpacity={0.7}
+            accessibilityLabel="分享总览"
+          >
+            <Text style={styles.iconText}>📤</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
             onPress={onPressStatistics}
