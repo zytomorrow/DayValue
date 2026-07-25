@@ -17,6 +17,14 @@ export type ShareItemEntry = {
   extra: string;
 };
 
+/** 分享卡片中的配件条目（精简版，仅用于展示） */
+export type ShareAccessoryEntry = {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  status: 'in_use' | 'damaged' | 'lost';
+};
+
 export type ShareCardData =
   | {
       kind: 'summary';
@@ -61,6 +69,7 @@ export type ShareCardData =
       activeDays: number;
       realizedProfit: number | null;
       statusLabel: string;
+      accessories?: ShareAccessoryEntry[];
     }
   | {
       kind: 'subscription';
@@ -72,6 +81,7 @@ export type ShareCardData =
       cyclePrice: number;
       cycleLabel: string;
       startDate: string;
+      accessories?: ShareAccessoryEntry[];
     };
 
 const CARD_WIDTH = 320;
@@ -390,7 +400,57 @@ function SingleBody({
           </>
         )}
       </View>
+
+      {data.accessories && data.accessories.length > 0 && (
+        <AccessoryList entries={data.accessories} />
+      )}
     </>
+  );
+}
+
+function AccessoryList({ entries }: { entries: ShareAccessoryEntry[] }) {
+  const { themeId } = useTheme();
+  const styles = useMemo(() => createStyles(), [themeId]);
+
+  // 仅展示在用 + 损坏的（丢失的视觉上太弱且对持有成本无意义）
+  const visible = entries.filter(e => e.status !== 'lost');
+  if (visible.length === 0) return null;
+
+  const totalCost = visible.reduce(
+    (sum, e) => sum + e.quantity * e.unitPrice,
+    0,
+  );
+
+  return (
+    <View style={styles.entryListWrap}>
+      <View style={[styles.entryListHeader, { backgroundColor: THEME.colors.warning }]}>
+        <Text style={styles.entryListTitle} numberOfLines={1}>
+          🔌 配件 · {visible.length} 项 · {formatCurrency(totalCost)}
+        </Text>
+      </View>
+      <View style={styles.entryListBody}>
+        {visible.map((entry, index) => {
+          const lineTotal = entry.quantity * entry.unitPrice;
+          const statusLabel = entry.status === 'damaged' ? ' · 损坏' : '';
+          return (
+            <View
+              key={`${entry.name}-${index}`}
+              style={[styles.entryRow, index > 0 && styles.entryRowDivider]}
+            >
+              <Text style={styles.entryName} numberOfLines={1}>
+                {entry.name}
+                {entry.quantity > 1 ? ` ×${entry.quantity}` : ''}
+              </Text>
+              <Text style={styles.entryExtra} numberOfLines={1}>
+                {entry.unitPrice > 0 ? formatCurrency(entry.unitPrice) : '—'}
+                {lineTotal > 0 && entry.quantity > 1 ? ` · 小计 ${formatCurrency(lineTotal)}` : ''}
+                {statusLabel}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 

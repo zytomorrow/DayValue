@@ -1236,6 +1236,12 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               activeDays,
               realizedProfit: isProfitableSold ? realizedProfit : null,
               statusLabel,
+              accessories: accessories.map(acc => ({
+                name: acc.name,
+                quantity: acc.quantity,
+                unitPrice: acc.unit_price,
+                status: acc.status,
+              })),
             });
           }}
           variant="outline"

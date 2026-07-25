@@ -8,12 +8,13 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList, Subscription } from '../types';
+import type { Accessory, RootStackParamList, Subscription } from '../types';
 import {
   getSubscriptionById,
   deleteSubscription,
   archiveSubscription,
   deleteAccessoriesByEntity,
+  getAccessoriesByEntity,
 } from '../database';
 import { calculateSubscriptionDailyCost } from '../utils/calculations';
 import { formatCurrency, formatDate } from '../utils/formatters';
@@ -35,11 +36,16 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
   const styles = useMemo(() => createStyles(), [themeId]);
   const [sub, setSub] = useState<Subscription | null>(null);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
 
   const loadData = useCallback(async () => {
     try {
-      const data = await getSubscriptionById(db, subscriptionId);
+      const [data, accs] = await Promise.all([
+        getSubscriptionById(db, subscriptionId),
+        getAccessoriesByEntity(db, 'subscription', subscriptionId),
+      ]);
       setSub(data);
+      setAccessories(accs);
       if (data) {
         navigation.setOptions({ title: data.name });
       }
@@ -132,7 +138,14 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
       <View style={styles.actions}>
         <BrutalButton
           title="📤 分享卡片"
-          onPress={() => {
+          onPress={async () => {
+            // 即时拉取最新配件，避免 AccessorySection 内部编辑后外层 state 未同步
+            let latestAccessories: Accessory[] = accessories;
+            try {
+              latestAccessories = await getAccessoriesByEntity(db, 'subscription', subscriptionId);
+            } catch {
+              // 拉取失败则回退到当前 state
+            }
             setShareData({
               kind: 'subscription',
               name: sub.name,
@@ -143,6 +156,12 @@ export function SubscriptionDetailScreen({ route, navigation }: Props) {
               cyclePrice: sub.cycle_price,
               cycleLabel,
               startDate: sub.start_date,
+              accessories: latestAccessories.map(acc => ({
+                name: acc.name,
+                quantity: acc.quantity,
+                unitPrice: acc.unit_price,
+                status: acc.status,
+              })),
             });
           }}
           variant="outline"
