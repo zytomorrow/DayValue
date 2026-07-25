@@ -20,7 +20,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type {
   MaintenanceLog,
-  NetWorthSnapshot,
   OneTimeItem,
   RootStackParamList,
   StoredCard,
@@ -28,7 +27,6 @@ import type {
 } from '../types';
 import {
   getAllMaintenanceLogs,
-  getAllNetWorthSnapshots,
   getAllOneTimeItems,
   getAllStoredCards,
   getAllSubscriptions,
@@ -39,6 +37,7 @@ import {
   calculateAssetHealth,
   calculateDailyCost,
   calculateNetAssetValue,
+  calculateNetAssetValueAtDate,
   calculateRealizedProfit,
   calculateServiceProgress,
   calculateStoredPrincipal,
@@ -188,7 +187,6 @@ export function AnnualReportScreen({ route, navigation }: Props) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
-  const [snapshots, setSnapshots] = useState<NetWorthSnapshot[]>([]);
   const [shareVisible, setShareVisible] = useState(false);
 
   // 年份下限：取所有资产/订阅/卡包最早记录年份；无记录时回退到当前年
@@ -218,19 +216,16 @@ export function AnnualReportScreen({ route, navigation }: Props) {
         nextSubscriptions,
         nextStoredCards,
         nextLogs,
-        nextSnapshots,
       ] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
         getAllMaintenanceLogs(db),
-        getAllNetWorthSnapshots(db),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
       setMaintenanceLogs(nextLogs);
-      setSnapshots(nextSnapshots);
     } catch (error) {
       console.error('加载年度报告数据失败', error);
     }
@@ -380,21 +375,47 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     return { rows, totalPrincipal, activeCount: yearCards.length };
   }, [storedCards, year]);
 
-  // ===================== 7. 年度净资产变化曲线 =====================
+  // ===================== 7. 年度净资产变化曲线（实时按月重建，无快照） =====================
+  // 取选中年每月末（当月最后一天）一个数据点，当前年的当月及之后月份不取（未来未发生）。
+  // 每个点用 calculateNetAssetValueAtDate 实时算出，反映该月末的真实净资产。
   const netWorthTrend = useMemo(() => {
-    const yearSnapshots = snapshots
-      .filter(snap => isDateInYear(snap.snapshot_date, year))
-      .sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
-    if (yearSnapshots.length === 0) {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12
+
+    const rows: { month: number; netValue: number; date: Date }[] = [];
+    const maxMonth = year < currentYear ? 12 : Math.min(currentMonth, 12);
+
+    for (let m = 1; m <= maxMonth; m += 1) {
+      // 月末：当月最后一天；当前月的「月末」取今天
+      let refDate: Date;
+      if (year === currentYear && m === currentMonth) {
+        refDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      } else {
+        refDate = new Date(year, m, 0); // 该月最后一天
+      }
+      const { netValue } = calculateNetAssetValueAtDate(
+        items,
+        storedCards,
+        card =>
+          calculateStoredPrincipal(card.actual_paid, card.face_value, card.current_balance),
+        refDate,
+      );
+      rows.push({ month: m, netValue, date: refDate });
+    }
+
+    if (rows.length === 0) {
       return { rows: [], maxNet: 0, minNet: 0, delta: 0, first: null, last: null };
     }
-    const maxNet = yearSnapshots.reduce((m, s) => Math.max(m, s.net_value), 0);
-    const minNet = yearSnapshots.reduce((m, s) => Math.min(m, s.net_value), 0);
-    const first = yearSnapshots[0];
-    const last = yearSnapshots[yearSnapshots.length - 1];
-    const delta = last.net_value - first.net_value;
-    return { rows: yearSnapshots, maxNet, minNet, delta, first, last };
-  }, [snapshots, year]);
+
+    const values = rows.map(r => r.netValue);
+    const maxNet = Math.max(...values);
+    const minNet = Math.min(...values);
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    const delta = last.netValue - first.netValue;
+    return { rows, maxNet, minNet, delta, first, last };
+  }, [items, storedCards, year]);
 
   // ===================== 8. 年度最佳资产（健康度最高的资产，按选中年计算） =====================
   const bestAsset = useMemo(() => {
@@ -425,7 +446,7 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     return candidates[0];
   }, [items, year]);
 
-  // ===================== 当前净资产（用于与年末快照对比） =====================
+  // ===================== 当前净资产（用于对比，实时计算） =====================
   const currentNetWorth = useMemo(
     () =>
       calculateNetAssetValue(items, storedCards, card =>
@@ -434,13 +455,17 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     [items, storedCards],
   );
 
-  // 展示用净资产：有年末快照时用年末值，否则回退到当前净资产（仅当前年无快照时）
+  // 展示用净资产：取年度曲线最后一个点（当前年为今天，过去年为年末）；无数据时回退当前
   const referenceNetWorth = useMemo(() => {
     if (netWorthTrend.last) {
-      return { value: netWorthTrend.last.net_value, label: '年末' };
+      const isCurrentYear = year === getCurrentYear();
+      return {
+        value: netWorthTrend.last.netValue,
+        label: isCurrentYear ? '当前' : '年末',
+      };
     }
     return { value: currentNetWorth.netValue, label: '当前' };
-  }, [netWorthTrend, currentNetWorth]);
+  }, [netWorthTrend, currentNetWorth, year]);
 
   // ===================== 分享：导出当前页完整内容 =====================
   const handleShare = useCallback(() => {
@@ -473,8 +498,8 @@ export function AnnualReportScreen({ route, navigation }: Props) {
 
   // 净资产变化百分比
   const netWorthDeltaPct = useMemo(() => {
-    if (!netWorthTrend.first || netWorthTrend.first.net_value === 0) return null;
-    return (netWorthTrend.delta / netWorthTrend.first.net_value) * 100;
+    if (!netWorthTrend.first || netWorthTrend.first.netValue === 0) return null;
+    return (netWorthTrend.delta / netWorthTrend.first.netValue) * 100;
   }, [netWorthTrend]);
 
   // 报告主体：年份选择器 + 8 个章节，页面渲染与分享完整导出共用同一份 JSX。
@@ -778,19 +803,19 @@ export function AnnualReportScreen({ route, navigation }: Props) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📈 年度净资产曲线</Text>
           <Text style={styles.cardSubTitle}>
-            {netWorthTrend.rows.length} 个快照 · {referenceNetWorth.label} {formatCurrency(referenceNetWorth.value)}
+            {netWorthTrend.rows.length} 个月点 · {referenceNetWorth.label} {formatCurrency(referenceNetWorth.value)}
           </Text>
           {netWorthTrend.rows.length === 0 ? (
-            <EmptyState message={`${year} 年暂无净资产快照`} icon="📉" />
+            <EmptyState message={`${year} 年暂无净资产数据`} icon="📉" />
           ) : (
             <>
               <View style={styles.netWorthChart}>
-                {netWorthTrend.rows.map((snap, index) => {
+                {netWorthTrend.rows.map((row, index) => {
                   const range = Math.max(netWorthTrend.maxNet - netWorthTrend.minNet, 1);
-                  const heightPct = ((snap.net_value - netWorthTrend.minNet) / range) * 100;
+                  const heightPct = ((row.netValue - netWorthTrend.minNet) / range) * 100;
                   const isLast = index === netWorthTrend.rows.length - 1;
                   return (
-                    <View key={snap.id} style={styles.netWorthBarColumn}>
+                    <View key={row.month} style={styles.netWorthBarColumn}>
                       <View style={styles.netWorthBarTrack}>
                         <View
                           style={[
@@ -805,7 +830,7 @@ export function AnnualReportScreen({ route, navigation }: Props) {
                         />
                       </View>
                       <Text style={styles.netWorthBarLabel} numberOfLines={1}>
-                        {snap.snapshot_date.slice(5)}
+                        {String(row.month).padStart(2, '0')}月
                       </Text>
                     </View>
                   );
@@ -815,16 +840,18 @@ export function AnnualReportScreen({ route, navigation }: Props) {
                 <View style={styles.netWorthDeltaBlock}>
                   <Text style={styles.netWorthDeltaLabel}>年初</Text>
                   <Text style={styles.netWorthDeltaValue}>
-                    {netWorthTrend.first ? formatCurrency(netWorthTrend.first.net_value) : '—'}
+                    {netWorthTrend.first ? formatCurrency(netWorthTrend.first.netValue) : '—'}
                   </Text>
                 </View>
                 <View style={styles.netWorthDeltaArrow}>
                   <Text style={styles.netWorthDeltaArrowText}>→</Text>
                 </View>
                 <View style={styles.netWorthDeltaBlock}>
-                  <Text style={styles.netWorthDeltaLabel}>年末</Text>
+                  <Text style={styles.netWorthDeltaLabel}>
+                    {year === getCurrentYear() ? '当前' : '年末'}
+                  </Text>
                   <Text style={styles.netWorthDeltaValue}>
-                    {netWorthTrend.last ? formatCurrency(netWorthTrend.last.net_value) : '—'}
+                    {netWorthTrend.last ? formatCurrency(netWorthTrend.last.netValue) : '—'}
                   </Text>
                 </View>
                 <View style={styles.netWorthDeltaDivider} />

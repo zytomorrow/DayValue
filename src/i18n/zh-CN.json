@@ -69,7 +69,7 @@
     "credits_desc": "感谢以下开源项目"
   },
   "cabinet": { "title": "数字陈列柜", "search": "搜索资产..." },
-  "statistics": { "title": "统计", "net_worth": "净资产趋势", "monthly_spending": "月度支出", "save_snapshot": "保存当日快照" },
+  "statistics": { "title": "统计", "net_worth": "净资产趋势", "monthly_spending": "月度支出" },
   "item": { "detail": "物品详情", "health": "健康度", "warranty": "保修", "service": "服役进度", "maintenance": "维修日志", "maintenance_plans": "保养计划" },
   "subscription": { "detail": "订阅详情", "daily_cost": "日均成本", "next_renewal": "下次扣款", "cancel": "取消订阅" },
   "stored_card": { "add": "新增储值卡", "principal": "剩余本金", "punch": "打卡" },

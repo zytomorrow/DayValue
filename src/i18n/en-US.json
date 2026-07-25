@@ -69,7 +69,7 @@
     "credits_desc": "Thanks to the following open source projects"
   },
   "cabinet": { "title": "Digital Cabinet", "search": "Search assets..." },
-  "statistics": { "title": "Statistics", "net_worth": "Net Worth Trend", "monthly_spending": "Monthly Spending", "save_snapshot": "Save snapshot for today" },
+  "statistics": { "title": "Statistics", "net_worth": "Net Worth Trend", "monthly_spending": "Monthly Spending" },
   "item": { "detail": "Item Detail", "health": "Health", "warranty": "Warranty", "service": "Service Progress", "maintenance": "Maintenance Log", "maintenance_plans": "Maintenance Plans" },
   "subscription": { "detail": "Subscription Detail", "daily_cost": "Daily Cost", "next_renewal": "Next Renewal", "cancel": "Cancel Subscription" },
   "stored_card": { "add": "Add Stored Card", "principal": "Remaining Principal", "punch": "Punch" },

@@ -427,6 +427,120 @@ export function calculateNetAssetValue(
   };
 }
 
+// ===================== 历史时刻净资产（实时重建，无快照） =====================
+
+/**
+ * 计算资产截至指定日期（含）的激活天数。
+ * - 截至 D 当天：D 之前购入且 D 之前未售出（或售出日 > D）→ 计入服役。
+ * - 售出发生在 D 之前 → 该资产在 D 已离手，不计入；但本函数返回 0 表示不计入。
+ * - 停用段（active_days 冻结值）无法按日期回溯，近似按「baseDays + D 之前激活天数」。
+ *   active_start_date 若 > D，则该段不计入。
+ */
+function activeDaysUpToDate(
+  item: Pick<OneTimeItem, 'status' | 'buy_date' | 'end_date' | 'active_days' | 'active_start_date' | 'archived_reason'>,
+  refDate: Date,
+): number {
+  const startDateStr = item.active_start_date || item.buy_date;
+  if (!startDateStr) return 0;
+  const start = parseISODate(startDateStr);
+  start.setHours(0, 0, 0, 0);
+  const ref = new Date(refDate);
+  ref.setHours(0, 0, 0, 0);
+
+  if (start > ref) return 0;
+
+  const baseDays = typeof item.active_days === 'number' ? item.active_days : 0;
+
+  // 售出资产：若售出日 <= ref，则该资产在 ref 时已离手，返回 0（不计入净资产）
+  if (item.status === 'archived' && item.archived_reason === 'sold' && item.end_date) {
+    const end = parseISODate(item.end_date);
+    end.setHours(0, 0, 0, 0);
+    if (end <= ref) return 0;
+  }
+
+  // 当前激活段：active_start_date <= ref 才计入
+  const diffDays = Math.floor((ref.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.max(0, baseDays + Math.max(diffDays, 0));
+}
+
+/** 资产截至 refDate 的折旧现值（已售出且售出日 <= ref 返回 0，表示已离手） */
+function depreciatedValueAtDate(
+  item: Pick<
+    OneTimeItem,
+    'total_price' | 'salvage_value' | 'expected_life_days' | 'status' | 'archived_reason' | 'end_date'
+  >,
+  activeDays: number,
+): number {
+  const archivedReason =
+    item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
+  // 已售出资产按 salvage_value 计；但若售出日 <= ref，调用方已返回 activeDays=0，
+  // 此处仍按 salvage_value 返回，调用方需结合 activeDays===0 判断是否计入。
+  if (item.status === 'archived' && archivedReason === 'sold') {
+    return item.salvage_value;
+  }
+  const expectedDays =
+    typeof item.expected_life_days === 'number' && item.expected_life_days > 0
+      ? item.expected_life_days
+      : null;
+  if (expectedDays === null) return item.total_price;
+  const remaining = Math.max(0, 1 - activeDays / expectedDays);
+  return Math.max(0, item.total_price * remaining);
+}
+
+/** 分期负债截至 refDate 的剩余本金（unredeemed 状态） */
+function remainingInstallmentDebtAtDate(
+  item: Pick<OneTimeItem, 'is_installment' | 'installment_months' | 'monthly_payment' | 'buy_date' | 'status'>,
+  refDate: Date,
+): number {
+  if (item.is_installment !== 1 || item.status !== 'unredeemed') return 0;
+  const months = item.installment_months ?? 0;
+  const monthly = item.monthly_payment ?? 0;
+  if (months <= 0 || monthly <= 0) return 0;
+
+  const start = parseISODate(item.buy_date);
+  const ref = new Date(refDate);
+  const diffDays = Math.floor((ref.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  const monthsPaid = Math.min(Math.floor(diffDays / 30), months);
+  return monthly * Math.max(0, months - monthsPaid);
+}
+
+/**
+ * 实时重建指定历史日期的净资产（无需快照）。
+ * - 资产：截至 refDate 仍在服役（购入 <= refDate，且未在 refDate 前售出）的折旧现值。
+ * - 储值卡：用当前 storedPrincipalOf 作为近似值（数据模型无余额流水，无法精确回溯）。
+ * - 分期：截至 refDate 未结清的剩余本金。
+ */
+export function calculateNetAssetValueAtDate(
+  items: OneTimeItem[],
+  storedCards: StoredCard[],
+  storedPrincipalOf: (card: StoredCard) => number,
+  refDate: Date,
+): NetAssetValueBreakdown {
+  let assetValue = 0;
+  let installmentDebt = 0;
+
+  for (const item of items) {
+    const activeDays = activeDaysUpToDate(item, refDate);
+    // activeDays===0 表示该资产在 refDate 时未购入或已售出离手，不计入
+    if (activeDays === 0) continue;
+
+    assetValue += depreciatedValueAtDate(item, activeDays);
+    installmentDebt += remainingInstallmentDebtAtDate(item, refDate);
+  }
+
+  const cardPrincipal = storedCards.reduce(
+    (sum, card) => sum + storedPrincipalOf(card),
+    0,
+  );
+
+  return {
+    assetValue,
+    cardPrincipal,
+    installmentDebt,
+    netValue: assetValue + cardPrincipal - installmentDebt,
+  };
+}
+
 /**
  * 计算一次性物品的日均成本
  * 公式：日均成本 = (购买金额 - 卖出价) / 激活天数

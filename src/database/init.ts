@@ -8,7 +8,7 @@ interface TableColumnInfo {
 }
 
 /** 当前数据库结构版本号，备份/恢复时会用来校验兼容性。 */
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 async function getTableColumnNames(
   db: SQLiteDatabase,
@@ -155,6 +155,7 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
       && userVersion !== 13
       && userVersion !== 14
       && userVersion !== 15
+      && userVersion !== 16
     ) {
       throw new Error(
         `数据库版本不匹配（当前 ${userVersion}，期望 ${SCHEMA_VERSION}）。请实现迁移后再发布。`,
@@ -269,18 +270,8 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
     }
 
     if (workingVersion === 12) {
-      await current.execAsync(`
-        CREATE TABLE IF NOT EXISTS NetWorthSnapshots (
-          id             INTEGER PRIMARY KEY AUTOINCREMENT,
-          snapshot_date  TEXT    NOT NULL UNIQUE,
-          asset_value    REAL    NOT NULL DEFAULT 0,
-          card_principal REAL    NOT NULL DEFAULT 0,
-          installment_debt REAL  NOT NULL DEFAULT 0,
-          net_value      REAL    NOT NULL DEFAULT 0,
-          created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
-        );
-        CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_date ON NetWorthSnapshots(snapshot_date);
-      `);
+      // v12 历史上创建过 NetWorthSnapshots 表，现已废弃。
+      // 此处留空作为版本占位，表的清理在 v16→v17 迁移中统一执行。
       workingVersion = 13;
     }
 
@@ -335,6 +326,16 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
         CREATE INDEX IF NOT EXISTS idx_accessories_entity ON Accessories(entity_type, item_id);
       `);
       workingVersion = 16;
+    }
+
+    if (workingVersion === 16) {
+      // 净资产快照功能已下线：历史净资产改为按原始数据实时重建（见 calculateNetAssetValueAtDate）。
+      // 这里清理废弃的 NetWorthSnapshots 表及其索引。
+      await current.execAsync(`
+        DROP INDEX IF EXISTS idx_net_worth_snapshots_date;
+        DROP TABLE IF EXISTS NetWorthSnapshots;
+      `);
+      workingVersion = 17;
     }
 
     await current.execAsync(`
@@ -408,20 +409,6 @@ export async function initDB(db: SQLiteDatabase): Promise<void> {
 
       CREATE INDEX IF NOT EXISTS idx_maintenance_logs_item_id ON MaintenanceLogs(item_id);
       CREATE INDEX IF NOT EXISTS idx_maintenance_logs_date ON MaintenanceLogs(log_date);
-    `);
-
-    await current.execAsync(`
-      CREATE TABLE IF NOT EXISTS NetWorthSnapshots (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        snapshot_date  TEXT    NOT NULL UNIQUE,
-        asset_value    REAL    NOT NULL DEFAULT 0,
-        card_principal REAL    NOT NULL DEFAULT 0,
-        installment_debt REAL  NOT NULL DEFAULT 0,
-        net_value      REAL    NOT NULL DEFAULT 0,
-        created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_date ON NetWorthSnapshots(snapshot_date);
     `);
 
     await current.execAsync(`

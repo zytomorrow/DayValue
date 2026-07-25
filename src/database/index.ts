@@ -8,4 +8,3 @@ export * from './subscriptions';
 export * from './maintenanceLogs';
 export * from './maintenancePlans';
 export * from './accessories';
-export * from './netWorthSnapshots';
