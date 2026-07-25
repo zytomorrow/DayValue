@@ -13,6 +13,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type {
+  Accessory,
   MaintenanceLog,
   MaintenancePlan,
   RootStackParamList,
@@ -26,6 +27,7 @@ import {
   getAllStoredCards,
   getAllMaintenanceLogs,
   getAllActiveMaintenancePlans,
+  getAllAccessories,
   getPreference,
   setPreference,
   redeemOneTimeItem,
@@ -67,7 +69,7 @@ import {
   ShareModal,
   SearchBar,
 } from '../components';
-import type { AssetStatusCounts, ShareCardData } from '../components';
+import type { AssetStatusCounts, ShareCardData, ShareItemEntry } from '../components';
 import { alertConfirm, alertError, alertSuccess } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
@@ -292,6 +294,7 @@ export function DashboardScreen({ navigation }: Props) {
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
   const [maintenancePlans, setMaintenancePlans] = useState<MaintenancePlan[]>([]);
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
@@ -324,18 +327,20 @@ export function DashboardScreen({ navigation }: Props) {
 
   const loadData = useCallback(async () => {
     try {
-      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs, nextPlans] = await Promise.all([
+      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs, nextPlans, nextAccessories] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
         getAllMaintenanceLogs(db),
         getAllActiveMaintenancePlans(db),
+        getAllAccessories(db),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
       setMaintenanceLogs(nextLogs);
       setMaintenancePlans(nextPlans);
+      setAccessories(nextAccessories);
     } catch (error) {
       console.error('加载首页数据失败', error);
     }
@@ -871,6 +876,62 @@ export function DashboardScreen({ navigation }: Props) {
         };
       }).sort((a, b) => b.dailyCost - a.dailyCost);
 
+      // 配件聚合：按实体（item + subscription）分组，统计每个实体的配件总成本（在用+损坏，不含丢失）
+      // 取 Top 5 实体展示在分享卡片中。
+      const accessoryByEntity = new Map<string, { cost: number; count: number }>();
+      for (const acc of accessories) {
+        if (acc.status === 'lost') continue;
+        const key = `${acc.entity_type}:${acc.item_id}`;
+        const existing = accessoryByEntity.get(key);
+        const lineCost = acc.quantity * acc.unit_price;
+        if (existing) {
+          existing.cost += lineCost;
+          existing.count += acc.quantity;
+        } else {
+          accessoryByEntity.set(key, { cost: lineCost, count: acc.quantity });
+        }
+      }
+
+      // 实体名/icon 解析：item 与 subscription 各自查找
+      const resolveEntityMeta = (entityType: string, entityId: number) => {
+        if (entityType === 'subscription') {
+          const sub = subscriptions.find(s => s.id === entityId);
+          if (sub) {
+            const cat = getCategoryInfo('subscription', sub.category ?? 'other');
+            return { name: sub.name, icon: sub.icon ?? cat.icon, imageUri: sub.image_uri };
+          }
+          return null;
+        }
+        // 默认 item
+        const item = items.find(it => it.id === entityId);
+        if (item) {
+          const cat = getCategoryInfo('item', item.category ?? 'other');
+          return { name: item.name, icon: item.icon ?? cat.icon, imageUri: item.image_uri };
+        }
+        return null;
+      };
+
+      const topAccessoryEntries: ShareItemEntry[] = [];
+      for (const [key, stat] of accessoryByEntity.entries()) {
+        const [entityType, entityIdStr] = key.split(':');
+        const meta = resolveEntityMeta(entityType, Number(entityIdStr));
+        if (!meta) continue;
+        topAccessoryEntries.push({
+          name: meta.name,
+          icon: meta.icon,
+          imageUri: meta.imageUri,
+          dailyCost: stat.cost,
+          extra: `${stat.count} 件`,
+        });
+      }
+      topAccessoryEntries.sort((a, b) => b.dailyCost - a.dailyCost);
+      const top5AccessoryEntries = topAccessoryEntries.slice(0, 5);
+
+      const accessoryTotalCost = topAccessoryEntries.reduce((s, e) => s + e.dailyCost, 0);
+      const accessoryCount = accessories
+        .filter(a => a.status !== 'lost')
+        .reduce((s, a) => s + a.quantity, 0);
+
       return {
         kind: 'summary',
         assetDailyCost: filteredTotalAssetDailyCost,
@@ -883,6 +944,9 @@ export function DashboardScreen({ navigation }: Props) {
         topAssets,
         topSubscriptions,
         topStoredCards,
+        accessoryTotalCost,
+        accessoryCount,
+        topAccessoryEntries: top5AccessoryEntries,
       };
     },
     [
@@ -896,6 +960,9 @@ export function DashboardScreen({ navigation }: Props) {
       sortedActiveSubscriptions,
       sortedActiveStoredCards,
       getCategoryInfo,
+      accessories,
+      items,
+      subscriptions,
     ],
   );
 

@@ -21,6 +21,13 @@ export async function getAccessoriesByEntity(
   );
 }
 
+/** 获取全部配件（按创建时间正序），用于总资产分享卡片的配件聚合。 */
+export async function getAllAccessories(db: SQLiteDatabase): Promise<Accessory[]> {
+  return db.getAllAsync<Accessory>(
+    `SELECT * FROM Accessories ORDER BY created_at ASC, id ASC`,
+  );
+}
+
 /** 获取指定物品的全部配件（entity_type='item' 的快捷方法） */
 export async function getAccessoriesByItem(
   db: SQLiteDatabase,

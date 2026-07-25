@@ -38,6 +38,12 @@ export type ShareCardData =
       topAssets: ShareItemEntry[];
       topSubscriptions: ShareItemEntry[];
       topStoredCards: ShareItemEntry[];
+      /** 全部配件总成本（在用+损坏，不含丢失） */
+      accessoryTotalCost: number;
+      /** 全部配件数量（在用+损坏，不含丢失） */
+      accessoryCount: number;
+      /** 配件成本 Top 5 实体（item + subscription 合并） */
+      topAccessoryEntries: ShareItemEntry[];
     }
   | {
       kind: 'annual';
@@ -178,6 +184,13 @@ function SummaryBody({ data }: { data: Extract<ShareCardData, { kind: 'summary' 
           entries={data.topStoredCards}
         />
       )}
+      {data.accessoryCount > 0 && (
+        <EntryList
+          title={`🔌 配件 · ${data.accessoryCount} 项 · ${formatCurrency(data.accessoryTotalCost)}`}
+          accent={THEME.colors.warning}
+          entries={data.topAccessoryEntries}
+        />
+      )}
     </>
   );
 }
@@ -196,7 +209,7 @@ function EntryList({
   return (
     <View style={styles.entryListWrap}>
       <View style={[styles.entryListHeader, { backgroundColor: accent }]}>
-        <Text style={styles.entryListTitle} numberOfLines={1}>
+        <Text style={styles.entryListTitle}>
           {title}
         </Text>
       </View>
