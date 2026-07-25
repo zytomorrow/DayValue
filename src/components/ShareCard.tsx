@@ -15,6 +15,8 @@ export type ShareItemEntry = {
   imageUri?: string | null;
   dailyCost: number;
   extra: string;
+  /** 该实体下的配件明细（仅总资产分享卡片的配件 Top 列表使用） */
+  accessories?: ShareAccessoryEntry[];
 };
 
 /** 分享卡片中的配件条目（精简版，仅用于展示） */
@@ -217,18 +219,46 @@ function EntryList({
         {entries.map((entry, index) => (
           <View
             key={`${entry.name}-${index}`}
-            style={[styles.entryRow, index > 0 && styles.entryRowDivider]}
+            style={[styles.entryRowWrap, index > 0 && styles.entryRowDivider]}
           >
-            <EntryCover icon={entry.icon} imageUri={entry.imageUri} size={22} />
-            <Text style={styles.entryName} numberOfLines={1}>
-              {entry.name}
-            </Text>
-            <Text style={styles.entryExtra} numberOfLines={1}>
-              {entry.extra}
-            </Text>
-            <Text style={[styles.entryCost, { color: accent }]}>
-              {formatCurrency(entry.dailyCost)}
-            </Text>
+            <View style={styles.entryRow}>
+              <EntryCover icon={entry.icon} imageUri={entry.imageUri} size={22} />
+              <Text style={styles.entryName} numberOfLines={1}>
+                {entry.name}
+              </Text>
+              <Text style={styles.entryExtra} numberOfLines={1}>
+                {entry.extra}
+              </Text>
+              <Text style={[styles.entryCost, { color: accent }]}>
+                {formatCurrency(entry.dailyCost)}
+              </Text>
+            </View>
+            {/* 配件明细紧跟主件下方显示 */}
+            {entry.accessories && entry.accessories.length > 0 && (
+              <View style={styles.entryAccessoryList}>
+                {entry.accessories.map((acc, ai) => {
+                  const lineTotal = acc.quantity * acc.unitPrice;
+                  const statusLabel = acc.status === 'damaged' ? ' · 损坏' : '';
+                  return (
+                    <View
+                      key={`acc-${ai}`}
+                      style={[styles.entryAccessoryRow, ai > 0 && styles.entryAccessoryDivider]}
+                    >
+                      <Text style={styles.entryAccessoryBullet}>└</Text>
+                      <Text style={styles.entryAccessoryName} numberOfLines={1}>
+                        {acc.name}
+                        {acc.quantity > 1 ? ` ×${acc.quantity}` : ''}
+                      </Text>
+                      <Text style={styles.entryAccessoryMeta} numberOfLines={1}>
+                        {acc.unitPrice > 0 ? formatCurrency(acc.unitPrice) : '—'}
+                        {lineTotal > 0 && acc.quantity > 1 ? ` · 小计 ${formatCurrency(lineTotal)}` : ''}
+                        {statusLabel}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
         ))}
       </View>
@@ -707,6 +737,9 @@ const createStyles = () => StyleSheet.create({
   entryListBody: {
     paddingVertical: 2,
   },
+  entryRowWrap: {
+    // 仅作为容器，承载主件行 + 配件子列表，确保配件紧跟主件
+  },
   entryRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -717,6 +750,41 @@ const createStyles = () => StyleSheet.create({
   entryRowDivider: {
     borderTopWidth: 1,
     borderColor: THEME.colors.border,
+  },
+  // 配件子列表：紧跟主件下方，左缩进对齐主件名
+  entryAccessoryList: {
+    paddingHorizontal: 10,
+    paddingBottom: 6,
+    backgroundColor: THEME.colors.background,
+  },
+  entryAccessoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+    paddingLeft: 4,
+    gap: 4,
+  },
+  entryAccessoryDivider: {
+    borderTopWidth: 0.5,
+    borderColor: THEME.colors.border,
+  },
+  entryAccessoryBullet: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    fontWeight: '900',
+  },
+  entryAccessoryName: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    minWidth: 0,
+  },
+  entryAccessoryMeta: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    maxWidth: 120,
   },
   entryIcon: {
     fontSize: 16,

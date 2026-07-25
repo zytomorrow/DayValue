@@ -69,7 +69,7 @@ import {
   ShareModal,
   SearchBar,
 } from '../components';
-import type { AssetStatusCounts, ShareCardData, ShareItemEntry } from '../components';
+import type { AssetStatusCounts, ShareCardData, ShareItemEntry, ShareAccessoryEntry } from '../components';
 import { alertConfirm, alertError, alertSuccess } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
@@ -877,18 +877,32 @@ export function DashboardScreen({ navigation }: Props) {
       }).sort((a, b) => b.dailyCost - a.dailyCost);
 
       // 配件聚合：按实体（item + subscription）分组，统计每个实体的配件总成本（在用+损坏，不含丢失）
-      // 取 Top 5 实体展示在分享卡片中。
-      const accessoryByEntity = new Map<string, { cost: number; count: number }>();
+      // 同时收集具体配件明细，用于在分享卡片中紧跟主件下方展示。取 Top 5 实体。
+      const accessoryByEntity = new Map<
+        string,
+        { cost: number; count: number; items: ShareAccessoryEntry[] }
+      >();
       for (const acc of accessories) {
         if (acc.status === 'lost') continue;
         const key = `${acc.entity_type}:${acc.item_id}`;
         const existing = accessoryByEntity.get(key);
         const lineCost = acc.quantity * acc.unit_price;
+        const entry: ShareAccessoryEntry = {
+          name: acc.name,
+          quantity: acc.quantity,
+          unitPrice: acc.unit_price,
+          status: acc.status,
+        };
         if (existing) {
           existing.cost += lineCost;
           existing.count += acc.quantity;
+          existing.items.push(entry);
         } else {
-          accessoryByEntity.set(key, { cost: lineCost, count: acc.quantity });
+          accessoryByEntity.set(key, {
+            cost: lineCost,
+            count: acc.quantity,
+            items: [entry],
+          });
         }
       }
 
@@ -916,12 +930,17 @@ export function DashboardScreen({ navigation }: Props) {
         const [entityType, entityIdStr] = key.split(':');
         const meta = resolveEntityMeta(entityType, Number(entityIdStr));
         if (!meta) continue;
+        // 每个实体内的配件按小计降序，让贵的配件排前面
+        const sortedItems = [...stat.items].sort(
+          (a, b) => b.quantity * b.unitPrice - a.quantity * a.unitPrice,
+        );
         topAccessoryEntries.push({
           name: meta.name,
           icon: meta.icon,
           imageUri: meta.imageUri,
           dailyCost: stat.cost,
           extra: `${stat.count} 件`,
+          accessories: sortedItems,
         });
       }
       topAccessoryEntries.sort((a, b) => b.dailyCost - a.dailyCost);
