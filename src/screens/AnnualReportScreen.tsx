@@ -39,7 +39,6 @@ import {
   calculateAssetHealth,
   calculateDailyCost,
   calculateNetAssetValue,
-  calculateOneTimeItemActiveDays,
   calculateRealizedProfit,
   calculateServiceProgress,
   calculateStoredPrincipal,
@@ -122,6 +121,57 @@ function calculateActiveDaysUpToYear(
   const diffDays =
     Math.floor((endStr.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   return Math.max(diffDays, 1);
+}
+
+/**
+ * 计算订阅在指定年份的实际计费次数（按月对齐 start_date 周期）。
+ * - 仅 status === 'active' 计入（数据模型无 end_date，无法回溯已取消订阅的活跃区间）。
+ * - 当前年：计费月截至「今天所在月」；过去年：全年 1-12 月；未来年：0。
+ * - start_date 晚于该年最后一个月 → 0。
+ * 返回该年内的扣款次数，金额 = 次数 × cycle_price。
+ */
+function countSubscriptionCyclesInYear(
+  sub: Pick<Subscription, 'start_date' | 'billing_cycle' | 'status'>,
+  year: number,
+): number {
+  if (sub.status !== 'active') return 0;
+  const startYear = yearOfDate(sub.start_date);
+  if (startYear === null) return 0;
+  const startMonth = Number(sub.start_date.slice(5, 7));
+  if (!Number.isFinite(startMonth)) return 0;
+  const startMonthIndex = startYear * 12 + (startMonth - 1);
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  let fromMonthIdx: number;
+  let toMonthIdx: number;
+  if (year < currentYear) {
+    fromMonthIdx = year * 12;
+    toMonthIdx = year * 12 + 11;
+  } else if (year === currentYear) {
+    fromMonthIdx = year * 12;
+    toMonthIdx = year * 12 + (currentMonth - 1);
+  } else {
+    return 0;
+  }
+
+  if (startMonthIndex > toMonthIdx) return 0;
+
+  const step = sub.billing_cycle === 'monthly' ? 1 : sub.billing_cycle === 'quarterly' ? 3 : 12;
+
+  let mi = startMonthIndex;
+  if (mi < fromMonthIdx) {
+    const skip = Math.ceil((fromMonthIdx - mi) / step) * step;
+    mi += skip;
+  }
+  let count = 0;
+  while (mi <= toMonthIdx) {
+    count += 1;
+    mi += step;
+  }
+  return count;
 }
 
 export function AnnualReportScreen({ route, navigation }: Props) {
@@ -236,39 +286,40 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     return { rows, totalProfit, totalRevenue, count: sold.length, winnerCount };
   }, [items, year]);
 
-  // ===================== 4. 年度订阅支出汇总（按月付/季付/年付统计） =====================
+  // ===================== 4. 年度订阅支出汇总（按该年实际计费次数 × cycle_price） =====================
   const subscriptionSummary = useMemo(() => {
-    // 仅统计该年份仍处于活跃状态的订阅
-    const active = subscriptions.filter(sub => sub.status === 'active');
+    // 按计费周期分组，仅保留在选中年有实际计费的订阅
     const groups: Record<'monthly' | 'quarterly' | 'yearly', Subscription[]> = {
       monthly: [],
       quarterly: [],
       yearly: [],
     };
-    for (const sub of active) {
+    const cyclesBySub = new Map<number, number>();
+
+    for (const sub of subscriptions) {
+      const cycles = countSubscriptionCyclesInYear(sub, year);
+      if (cycles <= 0) continue;
+      cyclesBySub.set(sub.id, cycles);
       groups[sub.billing_cycle].push(sub);
     }
 
-    const cyclesPerYear: Record<'monthly' | 'quarterly' | 'yearly', number> = {
-      monthly: 12,
-      quarterly: 4,
-      yearly: 1,
-    };
-
     const monthlyTotal = groups.monthly.reduce(
-      (sum, sub) => sum + sub.cycle_price * cyclesPerYear.monthly,
+      (sum, sub) => sum + sub.cycle_price * (cyclesBySub.get(sub.id) ?? 0),
       0,
     );
     const quarterlyTotal = groups.quarterly.reduce(
-      (sum, sub) => sum + sub.cycle_price * cyclesPerYear.quarterly,
+      (sum, sub) => sum + sub.cycle_price * (cyclesBySub.get(sub.id) ?? 0),
       0,
     );
     const yearlyTotal = groups.yearly.reduce(
-      (sum, sub) => sum + sub.cycle_price * cyclesPerYear.yearly,
+      (sum, sub) => sum + sub.cycle_price * (cyclesBySub.get(sub.id) ?? 0),
       0,
     );
     const grandTotal = monthlyTotal + quarterlyTotal + yearlyTotal;
     const maxGroupTotal = Math.max(monthlyTotal, quarterlyTotal, yearlyTotal, 1);
+
+    const activeCount =
+      groups.monthly.length + groups.quarterly.length + groups.yearly.length;
 
     return {
       groups,
@@ -277,9 +328,9 @@ export function AnnualReportScreen({ route, navigation }: Props) {
       yearlyTotal,
       grandTotal,
       maxGroupTotal,
-      activeCount: active.length,
+      activeCount,
     };
-  }, [subscriptions]);
+  }, [subscriptions, year]);
 
   // ===================== 5. 年度维修支出汇总 =====================
   const maintenanceSummary = useMemo(() => {
@@ -309,10 +360,13 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     return { yearLogs, totalCost, topItems, logCount: yearLogs.length };
   }, [maintenanceLogs, items, year]);
 
-  // ===================== 6. 年度沉睡卡包提醒（剩余本金最多的卡） =====================
+  // ===================== 6. 年度沉睡卡包提醒（该年有更新记录的卡，按剩余本金排序） =====================
   const dormantCardSummary = useMemo(() => {
-    const active = storedCards.filter(card => card.status === 'active');
-    const rows = active
+    // 仅统计选中年内有更新记录（last_updated_date 落在该年）的活跃卡
+    const yearCards = storedCards.filter(
+      card => card.status === 'active' && isDateInYear(card.last_updated_date, year),
+    );
+    const rows = yearCards
       .map(card => {
         const principal = calculateStoredPrincipal(
           card.actual_paid,
@@ -323,8 +377,8 @@ export function AnnualReportScreen({ route, navigation }: Props) {
       })
       .sort((a, b) => b.principal - a.principal);
     const totalPrincipal = rows.reduce((sum, row) => sum + row.principal, 0);
-    return { rows, totalPrincipal, activeCount: active.length };
-  }, [storedCards]);
+    return { rows, totalPrincipal, activeCount: yearCards.length };
+  }, [storedCards, year]);
 
   // ===================== 7. 年度净资产变化曲线 =====================
   const netWorthTrend = useMemo(() => {
@@ -342,21 +396,34 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     return { rows: yearSnapshots, maxNet, minNet, delta, first, last };
   }, [snapshots, year]);
 
-  // ===================== 8. 年度最佳资产（健康度最高的在用资产） =====================
+  // ===================== 8. 年度最佳资产（健康度最高的资产，按选中年计算） =====================
   const bestAsset = useMemo(() => {
+    // 候选：在选中年内处于服役期的资产
+    // - buy_date 年份 <= 选中年（购入不晚于该年末）
+    // - 在用，或在该年售出（archived+sold 且 end_date 年份 >= 选中年）
     const candidates = items
-      .filter(item => item.status === 'active')
+      .filter(item => {
+        const buyYear = yearOfDate(item.buy_date);
+        if (buyYear === null || buyYear > year) return false;
+        if (item.status === 'active') return true;
+        if (item.status === 'archived' && item.archived_reason === 'sold') {
+          const endYear = yearOfDate(item.end_date);
+          return endYear !== null && endYear >= year;
+        }
+        return false;
+      })
       .map(item => {
-        const activeDays = calculateOneTimeItemActiveDays(item);
+        // 激活天数截至选中年末/今天，而非今天
+        const activeDays = calculateActiveDaysUpToYear(item, year);
         const serviceProgress = calculateServiceProgress(item, activeDays);
         const health = calculateAssetHealth(item, serviceProgress);
         return { item, activeDays, serviceProgress, health };
       })
-      .filter(entry => entry.health.grade !== 'unknown');
+      .filter(entry => entry.activeDays > 0 && entry.health.grade !== 'unknown');
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => b.health.score - a.health.score);
     return candidates[0];
-  }, [items]);
+  }, [items, year]);
 
   // ===================== 当前净资产（用于与年末快照对比） =====================
   const currentNetWorth = useMemo(
@@ -366,6 +433,14 @@ export function AnnualReportScreen({ route, navigation }: Props) {
       ),
     [items, storedCards],
   );
+
+  // 展示用净资产：有年末快照时用年末值，否则回退到当前净资产（仅当前年无快照时）
+  const referenceNetWorth = useMemo(() => {
+    if (netWorthTrend.last) {
+      return { value: netWorthTrend.last.net_value, label: '年末' };
+    }
+    return { value: currentNetWorth.netValue, label: '当前' };
+  }, [netWorthTrend, currentNetWorth]);
 
   // ===================== 分享：导出当前页完整内容 =====================
   const handleShare = useCallback(() => {
@@ -703,7 +778,7 @@ export function AnnualReportScreen({ route, navigation }: Props) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📈 年度净资产曲线</Text>
           <Text style={styles.cardSubTitle}>
-            {netWorthTrend.rows.length} 个快照 · 当前 {formatCurrency(currentNetWorth.netValue)}
+            {netWorthTrend.rows.length} 个快照 · {referenceNetWorth.label} {formatCurrency(referenceNetWorth.value)}
           </Text>
           {netWorthTrend.rows.length === 0 ? (
             <EmptyState message={`${year} 年暂无净资产快照`} icon="📉" />
