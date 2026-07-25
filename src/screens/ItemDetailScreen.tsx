@@ -37,6 +37,7 @@ import {
   updateAccessory,
 } from '../database';
 import {
+  calculateAccessoryTotalCost,
   calculateAssetHealth,
   calculateDailyCost,
   calculateDailyDebt,
@@ -507,10 +508,13 @@ export function ItemDetailScreen({ route, navigation }: Props) {
   const isPaused = isArchived && archivedReason !== 'sold';
 
   const activeDays = calculateOneTimeItemActiveDays(item);
-  const dailyCost = calculateDailyCost(item.total_price, isSold ? item.salvage_value : 0, activeDays);
+  // 配件成本并入主件总价：日均 / 盈利 / 折旧都基于合并后的总价计算
+  const accessoryCost = calculateAccessoryTotalCost(accessories);
+  const effectiveTotalPrice = item.total_price + accessoryCost;
+  const dailyCost = calculateDailyCost(effectiveTotalPrice, isSold ? item.salvage_value : 0, activeDays);
   const dailyDebt = calculateDailyDebt(item.monthly_payment ?? 0);
-  const realizedProfit = isSold ? calculateRealizedProfit(item.total_price, item.salvage_value) : 0;
-  const isProfitableSold = isSold && isProfitableSale(item.total_price, item.salvage_value);
+  const realizedProfit = isSold ? calculateRealizedProfit(effectiveTotalPrice, item.salvage_value) : 0;
+  const isProfitableSold = isSold && isProfitableSale(effectiveTotalPrice, item.salvage_value);
 
   const serviceProgress = calculateServiceProgress(item, activeDays);
   const depreciatedValue = calculateDepreciatedValue(item, activeDays);
@@ -739,7 +743,10 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       </View>
 
       <View style={styles.card}>
-        <InfoRow label="总金额" value={formatCurrency(item.total_price)} />
+        <InfoRow
+          label={accessoryCost > 0 ? '总金额（含配件）' : '总金额'}
+          value={formatCurrency(effectiveTotalPrice)}
+        />
         <InfoRow label="购买日期" value={formatDate(item.buy_date)} />
 
         {item.is_installment === 1 && (
@@ -1231,7 +1238,7 @@ export function ItemDetailScreen({ route, navigation }: Props) {
               imageUri: imageUri,
               categoryName: category.name,
               dailyCost: safeDailyCost,
-              totalPrice: item.total_price,
+              totalPrice: effectiveTotalPrice,
               buyDate: item.buy_date,
               activeDays,
               realizedProfit: isProfitableSold ? realizedProfit : null,

@@ -4,6 +4,7 @@ import { THEME } from '../utils/constants';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import {
+  calculateAccessoryTotalCost,
   calculateAssetHealth,
   calculateDaysUsed,
   calculateDailyCost,
@@ -46,9 +47,12 @@ export function ItemCard({ item, onPress, style, layout = 'list', accessories }:
   const activeDays = calculateOneTimeItemActiveDays(item);
   const archivedReason = item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
   const isSold = item.status === 'archived' && archivedReason === 'sold';
-  const isProfitableSold = isSold && isProfitableSale(item.total_price, item.salvage_value);
-  const realizedProfit = isSold ? calculateRealizedProfit(item.total_price, item.salvage_value) : 0;
-  const dailyCost = calculateDailyCost(item.total_price, isSold ? item.salvage_value : 0, activeDays);
+  // 配件成本并入主件：买入总价 / 日均 / 盈利 都基于 (主件价 + 配件成本) 计算
+  const accessoryCost = calculateAccessoryTotalCost(accessories ?? []);
+  const effectiveTotalPrice = item.total_price + accessoryCost;
+  const isProfitableSold = isSold && isProfitableSale(effectiveTotalPrice, item.salvage_value);
+  const realizedProfit = isSold ? calculateRealizedProfit(effectiveTotalPrice, item.salvage_value) : 0;
+  const dailyCost = calculateDailyCost(effectiveTotalPrice, isSold ? item.salvage_value : 0, activeDays);
   const dailyDebt = calculateDailyDebt(item.monthly_payment ?? 0);
 
   // 服役进度：仅对非赎身（非分期未还完）且设置了预期使用天数的物品生效。
@@ -117,7 +121,7 @@ export function ItemCard({ item, onPress, style, layout = 'list', accessories }:
           <View style={styles.gridStatBlock}>
             <Text style={styles.gridStatLabel}>{isUnredeemed ? '月供' : '买入'}</Text>
             <Text style={styles.gridStatValue}>
-              {formatCurrency(isUnredeemed ? (item.monthly_payment ?? 0) : item.total_price)}
+              {formatCurrency(isUnredeemed ? (item.monthly_payment ?? 0) : effectiveTotalPrice)}
             </Text>
           </View>
           <View style={styles.gridStatBlock}>
@@ -184,7 +188,7 @@ export function ItemCard({ item, onPress, style, layout = 'list', accessories }:
           <>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>买入</Text>
-              <Text style={styles.statValue}>{formatCurrency(item.total_price)}</Text>
+              <Text style={styles.statValue}>{formatCurrency(effectiveTotalPrice)}</Text>
             </View>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>激活</Text>

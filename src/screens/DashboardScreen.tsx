@@ -39,6 +39,7 @@ import {
   calculateDailyDebt,
   calculateStoredPrincipal,
   calculateRealizedProfit,
+  calculateAccessoryTotalCost,
   calculateOneTimeItemActiveDays,
   calculateNetAssetValue,
   calculateWarrantyInfo,
@@ -295,6 +296,22 @@ export function DashboardScreen({ navigation }: Props) {
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
   const [maintenancePlans, setMaintenancePlans] = useState<MaintenancePlan[]>([]);
   const [accessories, setAccessories] = useState<Accessory[]>([]);
+
+  // 配件索引：按 entity_type:item_id 分组，便于卡片按 id 快速取配件
+  // 也用于汇总日均/盈利计算时并入主件总价
+  const accessoryIndex = useMemo(() => {
+    const map = new Map<string, Accessory[]>();
+    for (const acc of accessories) {
+      const key = `${acc.entity_type}:${acc.item_id}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.push(acc);
+      } else {
+        map.set(key, [acc]);
+      }
+    }
+    return map;
+  }, [accessories]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
@@ -648,9 +665,14 @@ export function DashboardScreen({ navigation }: Props) {
   const filteredTotalAssetDailyCost = useMemo(() => {
     return filteredActiveItems.reduce((sum, item) => {
       const activeDays = calculateOneTimeItemActiveDays(item);
-      return sum + calculateDailyCost(item.total_price, 0, activeDays);
+      // 配件成本并入主件总价计算日均
+      const accessoryCost = calculateAccessoryTotalCost(
+        accessoryIndex.get(`item:${item.id}`) ?? [],
+      );
+      const effectiveTotalPrice = item.total_price + accessoryCost;
+      return sum + calculateDailyCost(effectiveTotalPrice, 0, activeDays);
     }, 0);
-  }, [filteredActiveItems]);
+  }, [filteredActiveItems, accessoryIndex]);
 
   const filteredDebtItems = useMemo(
     () => sortedDebtItems.filter(matchesDebtSearch),
@@ -671,12 +693,17 @@ export function DashboardScreen({ navigation }: Props) {
 
   const filteredRealizedProfit = useMemo(() => {
     return filteredSoldItems.reduce((sum, item) => {
-      if (!isProfitableSale(item.total_price, item.salvage_value)) {
+      // 配件成本并入主件总价计算盈利（配件已随主件一同售出）
+      const accessoryCost = calculateAccessoryTotalCost(
+        accessoryIndex.get(`item:${item.id}`) ?? [],
+      );
+      const effectiveTotalPrice = item.total_price + accessoryCost;
+      if (!isProfitableSale(effectiveTotalPrice, item.salvage_value)) {
         return sum;
       }
-      return sum + calculateRealizedProfit(item.total_price, item.salvage_value);
+      return sum + calculateRealizedProfit(effectiveTotalPrice, item.salvage_value);
     }, 0);
-  }, [filteredSoldItems]);
+  }, [filteredSoldItems, accessoryIndex]);
 
   const totalSubscriptionCost = useMemo(() => {
     return activeSubscriptions.reduce(
@@ -833,7 +860,9 @@ export function DashboardScreen({ navigation }: Props) {
     () => {
       // 配件索引：按 entity_type:entityId 分组（仅含在用+损坏，不含丢失）
       // 用于在分享卡片 topAssets/topSubscriptions 中紧跟主件展示配件明细
+      // 同时维护每个 item 的配件总成本，用于并入主件总价计算日均
       const accessoryByEntity = new Map<string, ShareAccessoryEntry[]>();
+      const accessoryCostByItem = new Map<number, number>();
       for (const acc of accessories) {
         if (acc.status === 'lost') continue;
         const key = `${acc.entity_type}:${acc.item_id}`;
@@ -849,6 +878,12 @@ export function DashboardScreen({ navigation }: Props) {
         } else {
           accessoryByEntity.set(key, [entry]);
         }
+        if (acc.entity_type === 'item') {
+          accessoryCostByItem.set(
+            acc.item_id,
+            (accessoryCostByItem.get(acc.item_id) ?? 0) + acc.quantity * acc.unit_price,
+          );
+        }
       }
       // 实体内配件按小计降序，让贵的排前面
       const sortAccessories = (list: ShareAccessoryEntry[] | undefined) => {
@@ -861,7 +896,10 @@ export function DashboardScreen({ navigation }: Props) {
       const topAssets: ShareItemEntry[] = [...filteredActiveItems]
         .map(item => {
           const activeDays = calculateOneTimeItemActiveDays(item);
-          const cost = calculateDailyCost(item.total_price, 0, activeDays);
+          // 配件成本并入主件总价，日均成本基于合并后的总价计算
+          const accessoryCost = accessoryCostByItem.get(item.id) ?? 0;
+          const effectiveTotalPrice = item.total_price + accessoryCost;
+          const cost = calculateDailyCost(effectiveTotalPrice, 0, activeDays);
           const cat = getCategoryInfo('item', item.category ?? 'other');
           return {
             name: item.name,
@@ -1021,20 +1059,7 @@ export function DashboardScreen({ navigation }: Props) {
     updateStoredCardSortField,
   ]);
 
-  // 配件索引：按 entity_type:item_id 分组，便于卡片按 id 快速取配件
-  const accessoryIndex = useMemo(() => {
-    const map = new Map<string, Accessory[]>();
-    for (const acc of accessories) {
-      const key = `${acc.entity_type}:${acc.item_id}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.push(acc);
-      } else {
-        map.set(key, [acc]);
-      }
-    }
-    return map;
-  }, [accessories]);
+  // 配件索引已提前到 state 声明之后定义（filteredTotalAssetDailyCost 等汇总值也依赖它）
 
   const renderAssetList = (data: OneTimeItem[]) => {
     if (assetLayoutMode === 'grid') {

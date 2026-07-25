@@ -569,7 +569,7 @@ export function isProfitableSale(price: number, soldPrice: number): boolean {
   return calculateRealizedProfit(price, soldPrice) > 0;
 }
 
-import type { BillingCycle, OneTimeItem, StoredCard, Subscription } from '../types';
+import type { Accessory, BillingCycle, OneTimeItem, StoredCard, Subscription } from '../types';
 
 /**
  * 计算一次性资产的“激活天数”（停用期间不增长）
@@ -628,6 +628,21 @@ export function calculateStoredPrincipal(
 ): number {
   if (faceValue <= 0) return 0;
   return (actualPaid / faceValue) * currentBalance;
+}
+
+/**
+ * 计算配件列表的总成本（仅含在用 + 损坏，丢失不计入）。
+ * 用于将配件成本并入主件的买入价 / 日均成本 / 盈利计算。
+ */
+export function calculateAccessoryTotalCost(
+  accessories: Array<Pick<Accessory, 'quantity' | 'unit_price' | 'status'>>,
+): number {
+  let total = 0;
+  for (const acc of accessories) {
+    if (acc.status === 'lost') continue;
+    total += acc.quantity * acc.unit_price;
+  }
+  return total;
 }
 
 function parseISODate(dateString: string): Date {
