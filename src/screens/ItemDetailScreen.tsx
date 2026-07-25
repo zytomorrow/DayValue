@@ -743,10 +743,13 @@ export function ItemDetailScreen({ route, navigation }: Props) {
       </View>
 
       <View style={styles.card}>
-        <InfoRow
-          label={accessoryCost > 0 ? '总金额（含配件）' : '总金额'}
-          value={formatCurrency(effectiveTotalPrice)}
-        />
+        <InfoRow label="主件金额" value={formatCurrency(item.total_price)} />
+        {accessoryCost > 0 && (
+          <InfoRow label="配件金额" value={formatCurrency(accessoryCost)} />
+        )}
+        {accessoryCost > 0 && (
+          <InfoRow label="合计投入" value={formatCurrency(effectiveTotalPrice)} />
+        )}
         <InfoRow label="购买日期" value={formatDate(item.buy_date)} />
 
         {item.is_installment === 1 && (

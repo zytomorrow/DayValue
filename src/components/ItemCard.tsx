@@ -121,8 +121,13 @@ export function ItemCard({ item, onPress, style, layout = 'list', accessories }:
           <View style={styles.gridStatBlock}>
             <Text style={styles.gridStatLabel}>{isUnredeemed ? '月供' : '买入'}</Text>
             <Text style={styles.gridStatValue}>
-              {formatCurrency(isUnredeemed ? (item.monthly_payment ?? 0) : effectiveTotalPrice)}
+              {formatCurrency(isUnredeemed ? (item.monthly_payment ?? 0) : item.total_price)}
             </Text>
+            {!isUnredeemed && accessoryCost > 0 && (
+              <Text style={styles.gridStatSubValue}>
+                +配件 {formatCurrency(accessoryCost)}
+              </Text>
+            )}
           </View>
           <View style={styles.gridStatBlock}>
             <Text style={styles.gridStatLabel}>{isUnredeemed ? '期数' : '激活'}</Text>
@@ -188,7 +193,12 @@ export function ItemCard({ item, onPress, style, layout = 'list', accessories }:
           <>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>买入</Text>
-              <Text style={styles.statValue}>{formatCurrency(effectiveTotalPrice)}</Text>
+              <Text style={styles.statValue}>{formatCurrency(item.total_price)}</Text>
+              {accessoryCost > 0 && (
+                <Text style={styles.statSubValue}>
+                  +配件 {formatCurrency(accessoryCost)}
+                </Text>
+              )}
             </View>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>激活</Text>
@@ -305,6 +315,13 @@ const createStyles = () => StyleSheet.create({
     fontWeight: '700',
     color: THEME.colors.textPrimary,
   },
+  // 主件价下方的小字配件价，弱化显示避免与主价格混淆
+  statSubValue: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.colors.warning,
+    marginTop: 1,
+  },
   dailyCost: {
     fontFamily: THEME.fontFamily.pixel,
     fontSize: THEME.fontSize.sm,
@@ -402,6 +419,12 @@ const createStyles = () => StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
+  },
+  gridStatSubValue: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.colors.warning,
+    marginTop: 2,
   },
   gridHighlight: {
     borderRadius: 4,

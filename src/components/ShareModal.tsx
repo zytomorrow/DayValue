@@ -131,32 +131,41 @@ export function ShareModal({ visible, data, content, title, onClose }: ShareModa
             </View>
 
             <View style={styles.actions}>
-              <BrutalButton
-                title={busy === 'share' ? '生成中...' : '📤 分享图片'}
-                onPress={() => runCapture('share')}
-                variant="primary"
-                size="md"
-                loading={busy === 'share'}
-                disabled={isBusy || (!hasCustomContent && !data)}
-                style={styles.actionBtn}
-              />
-              <BrutalButton
-                title={busy === 'save' ? '保存中...' : '💾 保存至相册'}
-                onPress={() => runCapture('save')}
-                variant="accent"
-                size="md"
-                loading={busy === 'save'}
-                disabled={isBusy || (!hasCustomContent && !data)}
-                style={styles.actionBtn}
-              />
-              <BrutalButton
-                title="关闭"
-                onPress={onClose}
-                variant="outline"
-                size="md"
-                disabled={isBusy}
-                style={styles.actionBtn}
-              />
+              <View style={styles.actionCell}>
+                <BrutalButton
+                  title={busy === 'share' ? '...' : '📤'}
+                  onPress={() => runCapture('share')}
+                  variant="primary"
+                  size="sm"
+                  loading={busy === 'share'}
+                  disabled={isBusy || (!hasCustomContent && !data)}
+                  style={styles.actionBtn}
+                />
+                <Text style={styles.actionLabel}>分享</Text>
+              </View>
+              <View style={styles.actionCell}>
+                <BrutalButton
+                  title={busy === 'save' ? '...' : '💾'}
+                  onPress={() => runCapture('save')}
+                  variant="accent"
+                  size="sm"
+                  loading={busy === 'save'}
+                  disabled={isBusy || (!hasCustomContent && !data)}
+                  style={styles.actionBtn}
+                />
+                <Text style={styles.actionLabel}>保存</Text>
+              </View>
+              <View style={styles.actionCell}>
+                <BrutalButton
+                  title="✕"
+                  onPress={onClose}
+                  variant="outline"
+                  size="sm"
+                  disabled={isBusy}
+                  style={styles.actionBtn}
+                />
+                <Text style={styles.actionLabel}>关闭</Text>
+              </View>
             </View>
 
             {isBusy && (
@@ -230,8 +239,9 @@ const createStyles = () => StyleSheet.create({
     color: THEME.colors.surface,
   },
   previewWrap: {
-    maxHeight: '60%',
-    paddingVertical: 16,
+    // 操作按钮已压缩为单行，预览区扩大到 72% 高度
+    maxHeight: '72%',
+    paddingVertical: 12,
     alignItems: 'center',
     backgroundColor: THEME.colors.background,
   },
@@ -249,18 +259,38 @@ const createStyles = () => StyleSheet.create({
     width: 320,
     alignSelf: 'center',
   },
+  // 操作按钮：水平排列、等宽、紧凑高度，最大化预览区
   actions: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 10,
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
     backgroundColor: THEME.colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.border,
+  },
+  actionCell: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
   },
   actionBtn: {
     width: '100%',
   },
+  actionLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    letterSpacing: 0.5,
+  },
   loadingOverlay: {
     position: 'absolute',
-    bottom: 14,
-    right: 24,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
 });
