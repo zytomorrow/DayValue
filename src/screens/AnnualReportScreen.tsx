@@ -53,7 +53,6 @@ import {
   ServiceProgressBar,
   ShareModal,
 } from '../components';
-import type { ShareCardData } from '../components';
 import { alertError } from '../utils/pixelAlert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AnnualReport'>;
@@ -140,7 +139,7 @@ export function AnnualReportScreen({ route, navigation }: Props) {
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
   const [snapshots, setSnapshots] = useState<NetWorthSnapshot[]>([]);
-  const [shareData, setShareData] = useState<ShareCardData | null>(null);
+  const [shareVisible, setShareVisible] = useState(false);
 
   // 年份下限：取所有资产/订阅/卡包最早记录年份；无记录时回退到当前年
   const minYear = useMemo(() => {
@@ -368,7 +367,7 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     [items, storedCards],
   );
 
-  // ===================== 分享卡片数据构建（反映本界面年度回顾内容） =====================
+  // ===================== 分享：导出当前页完整内容 =====================
   const handleShare = useCallback(() => {
     if (
       purchasedSummary.count === 0 &&
@@ -377,38 +376,16 @@ export function AnnualReportScreen({ route, navigation }: Props) {
       maintenanceSummary.logCount === 0 &&
       dormantCardSummary.activeCount === 0
     ) {
-      alertError('暂无可分享数据', '该年份没有任何资产活动，无法生成年度报告卡片。');
+      alertError('暂无可分享数据', '该年份没有任何资产活动，无法生成年度报告。');
       return;
     }
-
-    const shareCardData: ShareCardData = {
-      kind: 'annual',
-      year,
-      purchasedCount: purchasedSummary.count,
-      purchasedTotal: purchasedSummary.totalAmount,
-      soldCount: soldSummary.count,
-      soldProfit: soldSummary.totalProfit,
-      soldRevenue: soldSummary.totalRevenue,
-      subscriptionTotal: subscriptionSummary.grandTotal,
-      maintenanceTotal: maintenanceSummary.totalCost,
-      dormantPrincipal: dormantCardSummary.totalPrincipal,
-      dormantCount: dormantCardSummary.activeCount,
-      netWorthDelta: netWorthTrend.rows.length > 0 ? netWorthTrend.delta : null,
-      netWorthFirst: netWorthTrend.first ? netWorthTrend.first.net_value : null,
-      netWorthLast: netWorthTrend.last ? netWorthTrend.last.net_value : null,
-      bestAssetName: bestAsset ? bestAsset.item.name : null,
-      bestAssetScore: bestAsset ? bestAsset.health.score : null,
-    };
-    setShareData(shareCardData);
+    setShareVisible(true);
   }, [
-    year,
     purchasedSummary,
     soldSummary,
     subscriptionSummary,
     maintenanceSummary,
     dormantCardSummary,
-    netWorthTrend,
-    bestAsset,
   ]);
 
   // 年份切换
@@ -425,10 +402,10 @@ export function AnnualReportScreen({ route, navigation }: Props) {
     return (netWorthTrend.delta / netWorthTrend.first.net_value) * 100;
   }, [netWorthTrend]);
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <StatusBar style={theme.colors.statusBar} />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+  // 报告主体：年份选择器 + 8 个章节，页面渲染与分享完整导出共用同一份 JSX。
+  // 这样分享年度报告时导出的就是当前页面完整内容，而非压缩摘要卡片。
+  const reportBody = (
+    <>
         {/* 顶部年份选择器 */}
         <View style={styles.yearPickerCard}>
           <Text style={styles.yearPickerTitle}>📅 年度资产回顾</Text>
@@ -876,6 +853,14 @@ export function AnnualReportScreen({ route, navigation }: Props) {
             </View>
           )}
         </View>
+    </>
+  );
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <StatusBar style={theme.colors.statusBar} />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {reportBody}
 
         {/* 底部分享按钮 */}
         <BrutalButton
@@ -888,9 +873,10 @@ export function AnnualReportScreen({ route, navigation }: Props) {
       </ScrollView>
 
       <ShareModal
-        visible={shareData !== null}
-        data={shareData}
-        onClose={() => setShareData(null)}
+        visible={shareVisible}
+        content={shareVisible ? reportBody : null}
+        title="分享年度报告"
+        onClose={() => setShareVisible(false)}
       />
     </SafeAreaView>
   );

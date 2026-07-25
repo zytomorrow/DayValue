@@ -1,15 +1,21 @@
 /**
  * ShareModal - 分享预览弹窗
- * 展示 ShareCard 预览，支持调起系统分享或保存至相册。
+ * 展示 ShareCard 预览或任意完整页面内容，支持调起系统分享或保存至相册。
+ *
+ * 当传入 `content` 时（用于年度报告等完整页面导出），会在 ViewShot 中渲染该节点；
+ * 否则使用 `data` 渲染 ShareCard。
+ *
+ * 注意：遮罩层使用 Pressable 作为独立背景，弹层 sheet 为纯 View，
+ * 避免外层 Touchable 拦截手势导致预览 ScrollView 概率性划不动。
  */
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import ViewShot from 'react-native-view-shot';
@@ -22,7 +28,12 @@ import { alertError, alertSuccess } from '../utils/pixelAlert';
 
 interface ShareModalProps {
   visible: boolean;
-  data: ShareCardData | null;
+  /** ShareCard 数据；当传入 content 时此项忽略 */
+  data?: ShareCardData | null;
+  /** 自定义完整页面内容（如年度报告），优先于 data */
+  content?: ReactNode;
+  /** 自定义标题；不传则按 data.kind 推导 */
+  title?: string;
   onClose: () => void;
 }
 
@@ -34,20 +45,24 @@ type Action = 'share' | 'save';
  */
 type ViewShotInstance = InstanceType<typeof ViewShot>;
 
-export function ShareModal({ visible, data, onClose }: ShareModalProps) {
+export function ShareModal({ visible, data, content, title, onClose }: ShareModalProps) {
   const shotRef = useRef<ViewShotInstance>(null);
   const scrollRef = useRef<ScrollView>(null);
   const [busy, setBusy] = useState<Action | null>(null);
   const { themeId } = useTheme();
   const styles = useMemo(() => createStyles(), [themeId]);
 
+  const hasCustomContent = content !== undefined && content !== null;
+
   async function runCapture(action: Action) {
     if (!shotRef.current || busy) return;
-    // 截图前回到顶部，确保整张卡片内容已完整渲染。
+    // 截图前回到顶部，确保整张内容已完整渲染。
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-    // 等待滚动完成后的重新渲染，避免截到滚动中间状态或阻塞手势
+    // 等待滚动完成后的重新渲染，避免截到滚动中间状态或阻塞手势。
+    // requestAnimationFrame 等待一帧布局，额外延时给图片等异步资源留出渲染时间。
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-    await new Promise<void>(resolve => setTimeout(resolve, 120));
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    await new Promise<void>(resolve => setTimeout(resolve, 150));
     setBusy(action);
     try {
       if (action === 'share') {
@@ -66,92 +81,92 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
     }
   }
 
-  const title =
-    data?.kind === 'summary'
+  const resolvedTitle =
+    title ??
+    (data?.kind === 'summary'
       ? '分享资产总览'
       : data?.kind === 'annual'
         ? '分享年度报告'
         : data?.kind === 'item'
           ? '分享资产卡片'
-          : '分享订阅卡片';
+          : '分享订阅卡片');
 
   const isBusy = busy !== null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity
-        style={styles.overlay}
-        onPress={onClose}
-        activeOpacity={1}
-      >
-        <TouchableOpacity
-          style={styles.sheet}
-          onPress={() => {}}
-          activeOpacity={1}
-        >
-          <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
-              <Text style={styles.closeText}>✕</Text>
-            </TouchableOpacity>
-          </View>
+      <View style={styles.overlay}>
+        {/* 独立背景层：点击关闭，不包裹 sheet 以免拦截内部手势 */}
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        {/* 弹层：纯 View，不拦截 ScrollView 的滑动手势 */}
+        <View style={styles.sheet} pointerEvents="box-none">
+          <View style={styles.sheetInner}>
+            <View style={styles.header}>
+              <Text style={styles.title}>{resolvedTitle}</Text>
+              <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8}>
+                <Text style={styles.closeText}>✕</Text>
+              </Pressable>
+            </View>
 
-          <View style={styles.previewWrap}>
-            {data && (
-              <ScrollView
-                ref={scrollRef}
-                style={styles.previewScroll}
-                contentContainerStyle={styles.previewContent}
-                showsVerticalScrollIndicator
-                bounces
-              >
-                <ViewShot
-                  ref={shotRef}
-                  options={{ format: 'png', quality: 1, result: 'tmpfile' }}
-                  style={styles.shot}
+            <View style={styles.previewWrap}>
+              {(hasCustomContent || data) && (
+                <ScrollView
+                  ref={scrollRef}
+                  style={styles.previewScroll}
+                  contentContainerStyle={styles.previewContent}
+                  showsVerticalScrollIndicator
+                  bounces
+                  // 关键：让 ScrollView 自身接管手势，不被外层阻断
+                  nestedScrollEnabled
                 >
-                  <ShareCard data={data} />
-                </ViewShot>
-              </ScrollView>
+                  <ViewShot
+                    ref={shotRef}
+                    options={{ format: 'png', quality: 1, result: 'tmpfile' }}
+                    style={styles.shot}
+                  >
+                    {hasCustomContent ? content : data ? <ShareCard data={data} /> : null}
+                  </ViewShot>
+                </ScrollView>
+              )}
+            </View>
+
+            <View style={styles.actions}>
+              <BrutalButton
+                title={busy === 'share' ? '生成中...' : '📤 分享图片'}
+                onPress={() => runCapture('share')}
+                variant="primary"
+                size="md"
+                loading={busy === 'share'}
+                disabled={isBusy || (!hasCustomContent && !data)}
+                style={styles.actionBtn}
+              />
+              <BrutalButton
+                title={busy === 'save' ? '保存中...' : '💾 保存至相册'}
+                onPress={() => runCapture('save')}
+                variant="accent"
+                size="md"
+                loading={busy === 'save'}
+                disabled={isBusy || (!hasCustomContent && !data)}
+                style={styles.actionBtn}
+              />
+              <BrutalButton
+                title="关闭"
+                onPress={onClose}
+                variant="outline"
+                size="md"
+                disabled={isBusy}
+                style={styles.actionBtn}
+              />
+            </View>
+
+            {isBusy && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator color={THEME.colors.primary} />
+              </View>
             )}
           </View>
-
-          <View style={styles.actions}>
-            <BrutalButton
-              title={busy === 'share' ? '生成中...' : '📤 分享图片'}
-              onPress={() => runCapture('share')}
-              variant="primary"
-              size="md"
-              loading={busy === 'share'}
-              disabled={isBusy || !data}
-              style={styles.actionBtn}
-            />
-            <BrutalButton
-              title={busy === 'save' ? '保存中...' : '💾 保存至相册'}
-              onPress={() => runCapture('save')}
-              variant="accent"
-              size="md"
-              loading={busy === 'save'}
-              disabled={isBusy || !data}
-              style={styles.actionBtn}
-            />
-            <BrutalButton
-              title="关闭"
-              onPress={onClose}
-              variant="outline"
-              size="md"
-              disabled={isBusy}
-              style={styles.actionBtn}
-            />
-          </View>
-
-          {isBusy && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator color={THEME.colors.primary} />
-            </View>
-          )}
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -159,14 +174,25 @@ export function ShareModal({ visible, data, onClose }: ShareModalProps) {
 const createStyles = () => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
+  // 独立背景层：铺满 overlay，位于 sheet 之下
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  // sheet 容器：不设背景，仅负责定位，pointerEvents box-none 让背景可点
   sheet: {
     width: '100%',
     maxWidth: 360,
+  },
+  sheetInner: {
     backgroundColor: THEME.colors.surface,
     borderWidth: 2,
     borderColor: THEME.colors.borderDark,

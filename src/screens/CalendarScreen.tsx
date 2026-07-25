@@ -38,6 +38,7 @@ import {
 import { formatCurrency, getTodayString } from '../utils/formatters';
 import { THEME } from '../utils/constants';
 import { useTheme } from '../contexts/ThemeContext';
+import { EntityCover } from '../components';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Calendar'>;
 
@@ -278,6 +279,30 @@ export function CalendarScreen({ navigation }: Props) {
     }
     return map;
   }, [monthEvents]);
+
+  /** 条目封面查找：`entityType:entityId` -> { imageUri, icon }，用于事件列表展示缩略图 */
+  const entityCoverLookup = useMemo(() => {
+    const map = new Map<string, { imageUri: string | null; icon: string }>();
+    for (const item of items) {
+      map.set(`item:${item.id}`, {
+        imageUri: item.image_uri ?? null,
+        icon: item.icon ?? '📦',
+      });
+    }
+    for (const sub of subscriptions) {
+      map.set(`subscription:${sub.id}`, {
+        imageUri: sub.image_uri ?? null,
+        icon: sub.icon ?? '💿',
+      });
+    }
+    for (const card of storedCards) {
+      map.set(`stored_card:${card.id}`, {
+        imageUri: card.image_uri ?? null,
+        icon: card.icon ?? '💳',
+      });
+    }
+    return map;
+  }, [items, subscriptions, storedCards]);
 
   /** 按日期分组：day(1-31) -> Set<CalendarEventType>（用于网格点标记） */
   const eventTypesByDay = useMemo(() => {
@@ -546,6 +571,7 @@ export function CalendarScreen({ navigation }: Props) {
             <View style={styles.eventList}>
               {selectedEvents.map((event, idx) => {
                 const meta = EVENT_META[event.type];
+                const cover = entityCoverLookup.get(`${event.entityType}:${event.entityId}`);
                 return (
                   <TouchableOpacity
                     key={`${event.type}-${event.entityId}-${idx}`}
@@ -556,7 +582,12 @@ export function CalendarScreen({ navigation }: Props) {
                     onPress={() => handlePressEvent(event)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.eventEmoji}>{meta.emoji}</Text>
+                    <EntityCover
+                      imageUri={cover?.imageUri}
+                      icon={cover?.icon ?? meta.emoji}
+                      size={28}
+                      iconSize={14}
+                    />
                     <View style={styles.eventInfo}>
                       <Text style={styles.eventTitle} numberOfLines={1}>
                         {event.title}
