@@ -304,6 +304,8 @@ export function DashboardScreen({ navigation }: Props) {
   const [debtSearch, setDebtSearch] = useState('');
   const [storedCardSearch, setStoredCardSearch] = useState('');
   const [warrantyFilter, setWarrantyFilter] = useState<WarrantyStatus | null>(null);
+  // 资产 Tab 工具区（搜索/保修筛选/排序布局）默认折叠，点击展开
+  const [assetToolsExpanded, setAssetToolsExpanded] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null);
 
@@ -1086,59 +1088,83 @@ export function DashboardScreen({ navigation }: Props) {
       <>
       <View style={styles.stickyTools}>
         {hasAnyAsset && (
-          <SearchBar
-            value={assetSearch}
-            onChange={setAssetSearch}
-            placeholder="搜索资产名称..."
-          />
+          <TouchableOpacity
+            style={styles.toolCollapseTrigger}
+            onPress={() => setAssetToolsExpanded(value => !value)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.toolCollapseTitle} numberOfLines={1}>
+              {assetSearch.trim()
+                ? `🔍 "${assetSearch.trim()}"`
+                : warrantyFilter
+                  ? `过滤: ${warrantyFilter === 'active' ? '在保' : warrantyFilter === 'expiring' ? '临保' : warrantyFilter === 'expired' ? '过保' : '无保修'}`
+                  : '搜索 / 保修筛选 / 排序布局'}
+            </Text>
+            <Text style={styles.toolCollapseSummary} numberOfLines={1}>
+              {assetSortSummary} · {assetLayoutMode === 'list' ? '列表' : '网格'}{assetGrouped ? ' · 分组' : ''}
+            </Text>
+            <Text style={styles.toolCollapseArrow}>
+              {assetToolsExpanded ? '▲' : '▼'}
+            </Text>
+          </TouchableOpacity>
         )}
 
-        {hasAnyAsset && (
-          <View style={styles.warrantyFilterRow}>
-            {(
-              [
-                { value: null as WarrantyStatus | null, label: '全部' },
-                { value: 'active' as WarrantyStatus, label: '在保' },
-                { value: 'expiring' as WarrantyStatus, label: '临保' },
-                { value: 'expired' as WarrantyStatus, label: '过保' },
-                { value: 'none' as WarrantyStatus, label: '无保修' },
-              ]
-            ).map(opt => {
-              const active = warrantyFilter === opt.value;
-              return (
-                <TouchableOpacity
-                  key={opt.label}
-                  style={[
-                    styles.warrantyFilterChip,
-                    active && styles.warrantyFilterChipActive,
-                  ]}
-                  onPress={() => setWarrantyFilter(opt.value)}
-                  activeOpacity={0.7}
-                >
-                  <Text
+        {hasAnyAsset && assetToolsExpanded && (
+          <>
+            <SearchBar
+              value={assetSearch}
+              onChange={setAssetSearch}
+              placeholder="搜索资产名称..."
+            />
+
+            <View style={styles.warrantyFilterRow}>
+              {(
+                [
+                  { value: null as WarrantyStatus | null, label: '全部' },
+                  { value: 'active' as WarrantyStatus, label: '在保' },
+                  { value: 'expiring' as WarrantyStatus, label: '临保' },
+                  { value: 'expired' as WarrantyStatus, label: '过保' },
+                  { value: 'none' as WarrantyStatus, label: '无保修' },
+                ]
+              ).map(opt => {
+                const active = warrantyFilter === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.label}
                     style={[
-                      styles.warrantyFilterChipText,
-                      active && styles.warrantyFilterChipTextActive,
+                      styles.warrantyFilterChip,
+                      active && styles.warrantyFilterChipActive,
                     ]}
+                    onPress={() => setWarrantyFilter(opt.value)}
+                    activeOpacity={0.7}
                   >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                    <Text
+                      style={[
+                        styles.warrantyFilterChipText,
+                        active && styles.warrantyFilterChipTextActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <AssetSectionToolbar
+              title="在用资产"
+              sortSummary={assetSortSummary}
+              layoutMode={assetLayoutMode}
+              grouped={assetGrouped}
+              onPressSort={() => setSortSheetTarget('assets')}
+              onToggleLayout={toggleAssetLayoutMode}
+              onToggleGrouped={toggleAssetGrouped}
+            />
+          </>
         )}
 
-        {hasAnyAsset && (
-          <AssetSectionToolbar
-            title="在用资产"
-            sortSummary={assetSortSummary}
-            layoutMode={assetLayoutMode}
-            grouped={assetGrouped}
-            onPressSort={() => setSortSheetTarget('assets')}
-            onToggleLayout={toggleAssetLayoutMode}
-            onToggleGrouped={toggleAssetGrouped}
-          />
+        {!hasAnyAsset && (
+          <View style={styles.toolCollapsePlaceholder} />
         )}
       </View>
 
@@ -1935,6 +1961,41 @@ const createStyles = () => StyleSheet.create({
     backgroundColor: THEME.colors.background,
     borderBottomWidth: 1,
     borderBottomColor: THEME.colors.border,
+  },
+  // 折叠态触发行：单行展示当前排序/布局摘要，点击展开三行工具
+  toolCollapseTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 5,
+    paddingHorizontal: THEME.spacing.sm,
+    marginBottom: 2,
+    borderRadius: THEME.borderRadius,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.borderDark,
+    backgroundColor: THEME.colors.surface,
+  },
+  toolCollapseTitle: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    minWidth: 0,
+  },
+  toolCollapseSummary: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.colors.textSecondary,
+    flexShrink: 0,
+  },
+  toolCollapseArrow: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: THEME.colors.primary,
+    flexShrink: 0,
+  },
+  toolCollapsePlaceholder: {
+    height: 2,
   },
   budgetCard: {
     marginHorizontal: THEME.spacing.lg,
