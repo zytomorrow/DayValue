@@ -431,9 +431,6 @@ export function AnnualReportScreen({ route, navigation }: Props) {
               <Text style={styles.yearArrowText}>▶</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.yearRangeHint}>
-            可选范围 {minYear} ~ {maxYear}
-          </Text>
         </View>
 
         {/* 1. 年度购入资产总览 */}
@@ -955,13 +952,6 @@ const createStyles = () =>
       fontSize: THEME.fontSize.md,
       fontWeight: '800',
       color: THEME.colors.onPrimary,
-    },
-    yearRangeHint: {
-      fontSize: 10,
-      fontWeight: '700',
-      color: THEME.colors.onPrimary,
-      marginTop: THEME.spacing.sm,
-      opacity: 0.8,
     },
 
     // 通用卡片
