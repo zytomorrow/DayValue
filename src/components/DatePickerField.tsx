@@ -247,18 +247,41 @@ function WheelColumn<T extends number>({ data, value, onChange, format }: WheelC
   const wheelStyles = useMemo(() => createWheelStyles(), [themeId]);
   const [layoutReady, setLayoutReady] = useState(false);
 
+  // 记录已同步到的索引，用于区分「外部 value 变更」与「本列自身 onChange 触发的变更」。
+  // 用户拖动引起的 onChange 会让 selectedIndex 变化，若 effect 再 scrollTo 一次会与手势
+  // 冲突，导致 ScrollView 概率性划不动；这里据此跳过自身触发的回写。
+  const syncedIndex = useRef<number>(-1);
+
   const selectedIndex = Math.max(0, data.indexOf(value));
 
-  // 滚动到选中项（初次渲染与 value 外部变更时）。
+  // 仅在外部 value 变更（初次挂载 / 父组件重置 / 跨列联动钳制）时滚动到选中项。
   useEffect(() => {
     if (!layoutReady) return;
+    if (selectedIndex === syncedIndex.current) return;
+    syncedIndex.current = selectedIndex;
     const y = selectedIndex * ITEM_HEIGHT;
     scrollRef.current?.scrollTo({ y, animated: false });
   }, [layoutReady, selectedIndex]);
 
+  // 仅更新值，不在此处 scrollTo：snapToInterval 已在原生层完成吸附定位，
+  // 再做一次 scrollTo（尤其 animated:true）会打断用户正在进行的惯性/手势。
+  const commitIndex = useCallback(
+    (index: number) => {
+      const clamped = Math.max(0, Math.min(data.length - 1, index));
+      if (clamped === syncedIndex.current) return;
+      syncedIndex.current = clamped;
+      if (data[clamped] !== value) {
+        onChange(data[clamped]);
+      }
+    },
+    [data, onChange, value],
+  );
+
+  // 点击列表项时才需要主动滚动（非手势场景，不会与惯性冲突）。
   const snapToIndex = useCallback(
     (index: number) => {
       const clamped = Math.max(0, Math.min(data.length - 1, index));
+      syncedIndex.current = clamped;
       const y = clamped * ITEM_HEIGHT;
       scrollRef.current?.scrollTo({ y, animated: true });
       if (data[clamped] !== value) {
@@ -268,13 +291,12 @@ function WheelColumn<T extends number>({ data, value, onChange, format }: WheelC
     [data, onChange, value],
   );
 
-  const handleScrollEnd = useCallback(
+  const handleMomentumEnd = useCallback(
     (e: { nativeEvent: { contentOffset: { y: number } } }) => {
       const y = e.nativeEvent.contentOffset.y;
-      const index = Math.round(y / ITEM_HEIGHT);
-      snapToIndex(index);
+      commitIndex(Math.round(y / ITEM_HEIGHT));
     },
-    [snapToIndex],
+    [commitIndex],
   );
 
   const pad = Math.floor(VISIBLE_COUNT / 2);
@@ -284,8 +306,7 @@ function WheelColumn<T extends number>({ data, value, onChange, format }: WheelC
       <ScrollView
         ref={scrollRef}
         onLayout={() => setLayoutReady(true)}
-        onMomentumScrollEnd={handleScrollEnd}
-        onScrollEndDrag={handleScrollEnd}
+        onMomentumScrollEnd={handleMomentumEnd}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={wheelStyles.content}
         snapToInterval={ITEM_HEIGHT}
