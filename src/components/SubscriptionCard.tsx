@@ -8,7 +8,8 @@ import { formatCurrency } from '../utils/formatters';
 import { StatusBadge } from './StatusBadge';
 import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 import { EntityCover } from './EntityCover';
-import type { Subscription } from '../types';
+import { AccessoryPreview } from './AccessoryPreview';
+import type { Accessory, Subscription } from '../types';
 
 type SubscriptionCardLayout = 'list' | 'grid';
 
@@ -17,6 +18,8 @@ interface SubscriptionCardProps {
   onPress: () => void;
   style?: StyleProp<ViewStyle>;
   layout?: SubscriptionCardLayout;
+  /** 该订阅的配件列表（在用+损坏才显示），可选 */
+  accessories?: Accessory[];
 }
 
 export function SubscriptionCard({
@@ -24,6 +27,7 @@ export function SubscriptionCard({
   onPress,
   style,
   layout = 'list',
+  accessories,
 }: SubscriptionCardProps) {
   const { getCategoryInfo } = useCategories();
   const { themeId } = useTheme();
@@ -141,6 +145,10 @@ export function SubscriptionCard({
           </Text>
         </View>
       </View>
+
+      {!isGrid && accessories && accessories.length > 0 && (
+        <AccessoryPreview accessories={accessories} />
+      )}
     </CardShell>
   );
 }

@@ -40,12 +40,6 @@ export type ShareCardData =
       topAssets: ShareItemEntry[];
       topSubscriptions: ShareItemEntry[];
       topStoredCards: ShareItemEntry[];
-      /** 全部配件总成本（在用+损坏，不含丢失） */
-      accessoryTotalCost: number;
-      /** 全部配件数量（在用+损坏，不含丢失） */
-      accessoryCount: number;
-      /** 配件成本 Top 5 实体（item + subscription 合并） */
-      topAccessoryEntries: ShareItemEntry[];
     }
   | {
       kind: 'annual';
@@ -184,13 +178,6 @@ function SummaryBody({ data }: { data: Extract<ShareCardData, { kind: 'summary' 
           title="沉睡卡包"
           accent={THEME.colors.warning}
           entries={data.topStoredCards}
-        />
-      )}
-      {data.accessoryCount > 0 && (
-        <EntryList
-          title={`🔌 配件 · ${data.accessoryCount} 项 · ${formatCurrency(data.accessoryTotalCost)}`}
-          accent={THEME.colors.warning}
-          entries={data.topAccessoryEntries}
         />
       )}
     </>

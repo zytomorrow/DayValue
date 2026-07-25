@@ -38,6 +38,7 @@ export type { PixelAlertButton, PixelAlertProps } from './PixelAlert';
 export { PixelAlertRoot } from './PixelAlertRoot';
 export { SearchBar } from './SearchBar';
 export { AccessorySection } from './AccessorySection';
+export { AccessoryPreview } from './AccessoryPreview';
 export { ErrorBoundary } from './ErrorBoundary';
 export { PixelPieChart } from './PixelPieChart';
 export type { PieSlice } from './PixelPieChart';

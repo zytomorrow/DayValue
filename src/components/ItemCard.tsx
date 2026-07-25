@@ -19,7 +19,8 @@ import { CardShell, CARD_VARIANT_COLORS } from './CardShell';
 import { EntityCover } from './EntityCover';
 import { ServiceProgressBar } from './ServiceProgressBar';
 import { HealthBadge } from './HealthBadge';
-import type { OneTimeItem } from '../types';
+import { AccessoryPreview } from './AccessoryPreview';
+import type { Accessory, OneTimeItem } from '../types';
 
 type ItemCardLayout = 'list' | 'grid';
 
@@ -28,9 +29,11 @@ interface ItemCardProps {
   onPress: () => void;
   style?: StyleProp<ViewStyle>;
   layout?: ItemCardLayout;
+  /** 该资产的配件列表（在用+损坏才显示），可选 */
+  accessories?: Accessory[];
 }
 
-export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProps) {
+export function ItemCard({ item, onPress, style, layout = 'list', accessories }: ItemCardProps) {
   const { getCategoryInfo } = useCategories();
   const { themeId } = useTheme();
   const styles = useMemo(() => createStyles(), [themeId]);
@@ -223,6 +226,10 @@ export function ItemCard({ item, onPress, style, layout = 'list' }: ItemCardProp
             valueText={`${serviceProgress.activeDays} / ${serviceProgress.expectedDays} 天`}
           />
         </View>
+      )}
+
+      {!isGrid && accessories && accessories.length > 0 && (
+        <AccessoryPreview accessories={accessories} />
       )}
     </CardShell>
   );

@@ -831,7 +831,34 @@ export function DashboardScreen({ navigation }: Props) {
 
   const summaryShareData = useMemo<ShareCardData>(
     () => {
-      const topAssets = [...filteredActiveItems]
+      // 配件索引：按 entity_type:entityId 分组（仅含在用+损坏，不含丢失）
+      // 用于在分享卡片 topAssets/topSubscriptions 中紧跟主件展示配件明细
+      const accessoryByEntity = new Map<string, ShareAccessoryEntry[]>();
+      for (const acc of accessories) {
+        if (acc.status === 'lost') continue;
+        const key = `${acc.entity_type}:${acc.item_id}`;
+        const entry: ShareAccessoryEntry = {
+          name: acc.name,
+          quantity: acc.quantity,
+          unitPrice: acc.unit_price,
+          status: acc.status,
+        };
+        const existing = accessoryByEntity.get(key);
+        if (existing) {
+          existing.push(entry);
+        } else {
+          accessoryByEntity.set(key, [entry]);
+        }
+      }
+      // 实体内配件按小计降序，让贵的排前面
+      const sortAccessories = (list: ShareAccessoryEntry[] | undefined) => {
+        if (!list || list.length === 0) return undefined;
+        return [...list].sort(
+          (a, b) => b.quantity * b.unitPrice - a.quantity * a.unitPrice,
+        );
+      };
+
+      const topAssets: ShareItemEntry[] = [...filteredActiveItems]
         .map(item => {
           const activeDays = calculateOneTimeItemActiveDays(item);
           const cost = calculateDailyCost(item.total_price, 0, activeDays);
@@ -842,11 +869,12 @@ export function DashboardScreen({ navigation }: Props) {
             imageUri: item.image_uri,
             dailyCost: Number.isFinite(cost) ? cost : 0,
             extra: `${activeDays} 天`,
+            accessories: sortAccessories(accessoryByEntity.get(`item:${item.id}`)),
           };
         })
         .sort((a, b) => b.dailyCost - a.dailyCost);
 
-      const topSubscriptions = sortedActiveSubscriptions.map(sub => {
+      const topSubscriptions: ShareItemEntry[] = sortedActiveSubscriptions.map(sub => {
         const cat = getCategoryInfo('subscription', sub.category ?? 'other');
         const cost = calculateSubscriptionDailyCost(sub.cycle_price, sub.billing_cycle);
         return {
@@ -859,6 +887,7 @@ export function DashboardScreen({ navigation }: Props) {
             : sub.billing_cycle === 'quarterly'
               ? '季付'
               : '年付',
+          accessories: sortAccessories(accessoryByEntity.get(`subscription:${sub.id}`)),
         };
       }).sort((a, b) => b.dailyCost - a.dailyCost);
 
@@ -876,81 +905,6 @@ export function DashboardScreen({ navigation }: Props) {
         };
       }).sort((a, b) => b.dailyCost - a.dailyCost);
 
-      // 配件聚合：按实体（item + subscription）分组，统计每个实体的配件总成本（在用+损坏，不含丢失）
-      // 同时收集具体配件明细，用于在分享卡片中紧跟主件下方展示。取 Top 5 实体。
-      const accessoryByEntity = new Map<
-        string,
-        { cost: number; count: number; items: ShareAccessoryEntry[] }
-      >();
-      for (const acc of accessories) {
-        if (acc.status === 'lost') continue;
-        const key = `${acc.entity_type}:${acc.item_id}`;
-        const existing = accessoryByEntity.get(key);
-        const lineCost = acc.quantity * acc.unit_price;
-        const entry: ShareAccessoryEntry = {
-          name: acc.name,
-          quantity: acc.quantity,
-          unitPrice: acc.unit_price,
-          status: acc.status,
-        };
-        if (existing) {
-          existing.cost += lineCost;
-          existing.count += acc.quantity;
-          existing.items.push(entry);
-        } else {
-          accessoryByEntity.set(key, {
-            cost: lineCost,
-            count: acc.quantity,
-            items: [entry],
-          });
-        }
-      }
-
-      // 实体名/icon 解析：item 与 subscription 各自查找
-      const resolveEntityMeta = (entityType: string, entityId: number) => {
-        if (entityType === 'subscription') {
-          const sub = subscriptions.find(s => s.id === entityId);
-          if (sub) {
-            const cat = getCategoryInfo('subscription', sub.category ?? 'other');
-            return { name: sub.name, icon: sub.icon ?? cat.icon, imageUri: sub.image_uri };
-          }
-          return null;
-        }
-        // 默认 item
-        const item = items.find(it => it.id === entityId);
-        if (item) {
-          const cat = getCategoryInfo('item', item.category ?? 'other');
-          return { name: item.name, icon: item.icon ?? cat.icon, imageUri: item.image_uri };
-        }
-        return null;
-      };
-
-      const topAccessoryEntries: ShareItemEntry[] = [];
-      for (const [key, stat] of accessoryByEntity.entries()) {
-        const [entityType, entityIdStr] = key.split(':');
-        const meta = resolveEntityMeta(entityType, Number(entityIdStr));
-        if (!meta) continue;
-        // 每个实体内的配件按小计降序，让贵的配件排前面
-        const sortedItems = [...stat.items].sort(
-          (a, b) => b.quantity * b.unitPrice - a.quantity * a.unitPrice,
-        );
-        topAccessoryEntries.push({
-          name: meta.name,
-          icon: meta.icon,
-          imageUri: meta.imageUri,
-          dailyCost: stat.cost,
-          extra: `${stat.count} 件`,
-          accessories: sortedItems,
-        });
-      }
-      topAccessoryEntries.sort((a, b) => b.dailyCost - a.dailyCost);
-      const top5AccessoryEntries = topAccessoryEntries.slice(0, 5);
-
-      const accessoryTotalCost = topAccessoryEntries.reduce((s, e) => s + e.dailyCost, 0);
-      const accessoryCount = accessories
-        .filter(a => a.status !== 'lost')
-        .reduce((s, a) => s + a.quantity, 0);
-
       return {
         kind: 'summary',
         assetDailyCost: filteredTotalAssetDailyCost,
@@ -963,9 +917,6 @@ export function DashboardScreen({ navigation }: Props) {
         topAssets,
         topSubscriptions,
         topStoredCards,
-        accessoryTotalCost,
-        accessoryCount,
-        topAccessoryEntries: top5AccessoryEntries,
       };
     },
     [
@@ -980,8 +931,6 @@ export function DashboardScreen({ navigation }: Props) {
       sortedActiveStoredCards,
       getCategoryInfo,
       accessories,
-      items,
-      subscriptions,
     ],
   );
 
@@ -1072,6 +1021,21 @@ export function DashboardScreen({ navigation }: Props) {
     updateStoredCardSortField,
   ]);
 
+  // 配件索引：按 entity_type:item_id 分组，便于卡片按 id 快速取配件
+  const accessoryIndex = useMemo(() => {
+    const map = new Map<string, Accessory[]>();
+    for (const acc of accessories) {
+      const key = `${acc.entity_type}:${acc.item_id}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.push(acc);
+      } else {
+        map.set(key, [acc]);
+      }
+    }
+    return map;
+  }, [accessories]);
+
   const renderAssetList = (data: OneTimeItem[]) => {
     if (assetLayoutMode === 'grid') {
       return renderGridRows(data, 'asset', item => (
@@ -1089,6 +1053,7 @@ export function DashboardScreen({ navigation }: Props) {
       <ItemCard
         key={item.id}
         item={item}
+        accessories={accessoryIndex.get(`item:${item.id}`)}
         onPress={() => navigation.navigate('ItemDetail', { itemId: item.id })}
       />
     ));
@@ -1111,6 +1076,7 @@ export function DashboardScreen({ navigation }: Props) {
       <ItemCard
         key={item.id}
         item={item}
+        accessories={accessoryIndex.get(`item:${item.id}`)}
         onPress={() => navigation.navigate('ItemDetail', { itemId: item.id })}
       />
     ));
@@ -1133,6 +1099,7 @@ export function DashboardScreen({ navigation }: Props) {
       <SubscriptionCard
         key={subscription.id}
         subscription={subscription}
+        accessories={accessoryIndex.get(`subscription:${subscription.id}`)}
         onPress={() => navigation.navigate('SubscriptionDetail', { subscriptionId: subscription.id })}
       />
     ));
