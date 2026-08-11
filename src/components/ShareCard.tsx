@@ -168,7 +168,7 @@ function SummaryBody({ data }: { data: Extract<ShareCardData, { kind: 'summary' 
       )}
       {data.topSubscriptions.length > 0 && (
         <EntryList
-          title="订阅明细"
+          title="订阅日均 Top"
           accent={THEME.colors.accent}
           entries={data.topSubscriptions}
         />
@@ -795,7 +795,7 @@ const createStyles = () => StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: THEME.colors.textSecondary,
-    maxWidth: 70,
+    maxWidth: 84,
   },
   entryCost: {
     fontSize: 13,

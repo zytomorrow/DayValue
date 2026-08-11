@@ -920,11 +920,12 @@ export function DashboardScreen({ navigation }: Props) {
           icon: sub.icon ?? cat.icon,
           imageUri: sub.image_uri,
           dailyCost: Number.isFinite(cost) ? cost : 0,
+          // 标注计费周期 + 折算口径，避免「年付 [数字]」被误读为年付金额
           extra: sub.billing_cycle === 'monthly'
-            ? '月付'
+            ? '月付 / 天'
             : sub.billing_cycle === 'quarterly'
-              ? '季付'
-              : '年付',
+              ? '季付 / 天'
+              : '年付 / 天',
           accessories: sortAccessories(accessoryByEntity.get(`subscription:${sub.id}`)),
         };
       }).sort((a, b) => b.dailyCost - a.dailyCost);
