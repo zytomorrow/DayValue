@@ -312,6 +312,21 @@ export function DashboardScreen({ navigation }: Props) {
     }
     return map;
   }, [accessories]);
+
+  // 物品 id → 配件列表 的索引，供 AssetGroupedList 等按 id 查询使用
+  const accessoryIndexByItemId = useMemo(() => {
+    const map = new Map<number, Accessory[]>();
+    for (const acc of accessories) {
+      if (acc.entity_type !== 'item') continue;
+      const existing = map.get(acc.item_id);
+      if (existing) {
+        existing.push(acc);
+      } else {
+        map.set(acc.item_id, [acc]);
+      }
+    }
+    return map;
+  }, [accessories]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
@@ -1376,6 +1391,7 @@ export function DashboardScreen({ navigation }: Props) {
               items={filteredActiveItems}
               categories={itemCategories}
               layoutMode={assetLayoutMode}
+              accessoriesByItem={accessoryIndexByItemId}
               onPressItem={itemId => navigation.navigate('ItemDetail', { itemId })}
             />
           ) : (

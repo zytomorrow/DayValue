@@ -5,11 +5,12 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import type { CategoryInfo, MaintenanceLog, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
-import { getAllMaintenanceLogs, getAllOneTimeItems, getAllStoredCards, getAllSubscriptions } from '../database';
+import type { Accessory, CategoryInfo, MaintenanceLog, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
+import { getAllAccessories, getAllMaintenanceLogs, getAllOneTimeItems, getAllStoredCards, getAllSubscriptions } from '../database';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useTheme } from '../contexts/ThemeContext';
 import {
+  calculateAccessoryTotalCost,
   calculateDailyCost,
   calculateDailyDebt,
   calculateDepreciatedValue,
@@ -215,19 +216,37 @@ export function StatisticsScreen({}: Props) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
+
+  // 物品 id → 配件列表，用于把配件成本并入主件总价后计算日均
+  const accessoryIndexByItemId = useMemo(() => {
+    const map = new Map<number, Accessory[]>();
+    for (const acc of accessories) {
+      if (acc.entity_type !== 'item') continue;
+      const existing = map.get(acc.item_id);
+      if (existing) {
+        existing.push(acc);
+      } else {
+        map.set(acc.item_id, [acc]);
+      }
+    }
+    return map;
+  }, [accessories]);
 
   const load = useCallback(async () => {
     try {
-      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs] = await Promise.all([
+      const [nextItems, nextSubscriptions, nextStoredCards, nextLogs, nextAccessories] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
         getAllMaintenanceLogs(db),
+        getAllAccessories(db),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
       setMaintenanceLogs(nextLogs);
+      setAccessories(nextAccessories);
     } catch (error) {
       console.error('加载统计数据失败', error);
     }
@@ -643,8 +662,11 @@ export function StatisticsScreen({}: Props) {
           return null;
         }
         const activeDays = calculateOneTimeItemActiveDays(item);
+        // 配件成本并入主件总价后计算日均，与详情页保持一致
+        const accessoryCost = calculateAccessoryTotalCost(accessoryIndexByItemId.get(item.id) ?? []);
+        const effectiveTotalPrice = item.total_price + accessoryCost;
         const dailyCost = calculateDailyCost(
-          item.total_price,
+          effectiveTotalPrice,
           archivedReason === 'sold' ? item.salvage_value : 0,
           activeDays,
         );
@@ -653,7 +675,7 @@ export function StatisticsScreen({}: Props) {
       .filter((entry): entry is { item: OneTimeItem; activeDays: number; dailyCost: number } => entry !== null)
       .sort((a, b) => b.dailyCost - a.dailyCost)
       .slice(0, 5);
-  }, [items]);
+  }, [items, accessoryIndexByItemId]);
 
   /** 订阅年度预算投影 */
   const subscriptionProjection = useMemo(() => {

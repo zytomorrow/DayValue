@@ -14,13 +14,15 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
+import type { Accessory, OneTimeItem, RootStackParamList, StoredCard, Subscription } from '../types';
 import {
+  getAllAccessories,
   getAllOneTimeItems,
   getAllStoredCards,
   getAllSubscriptions,
 } from '../database';
 import {
+  calculateAccessoryTotalCost,
   calculateDailyCost,
   calculateDailyDebt,
   calculateOneTimeItemActiveDays,
@@ -72,6 +74,7 @@ export function CabinetScreen({ navigation }: Props) {
   const [items, setItems] = useState<OneTimeItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortField, setSortField] = useState<SortField>('recent');
   const [typeFilter, setTypeFilter] = useState<CabinetTypeFilter>('all');
@@ -80,14 +83,16 @@ export function CabinetScreen({ navigation }: Props) {
 
   const loadData = useCallback(async () => {
     try {
-      const [nextItems, nextSubscriptions, nextStoredCards] = await Promise.all([
+      const [nextItems, nextSubscriptions, nextStoredCards, nextAccessories] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
+        getAllAccessories(db),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
+      setAccessories(nextAccessories);
     } catch (error) {
       console.error('加载陈列柜数据失败', error);
     }
@@ -99,17 +104,35 @@ export function CabinetScreen({ navigation }: Props) {
     }, [loadData]),
   );
 
+  // 物品 id → 配件列表，用于把配件成本并入主件总价计算日均
+  const accessoryIndexByItemId = useMemo(() => {
+    const map = new Map<number, Accessory[]>();
+    for (const acc of accessories) {
+      if (acc.entity_type !== 'item') continue;
+      const existing = map.get(acc.item_id);
+      if (existing) {
+        existing.push(acc);
+      } else {
+        map.set(acc.item_id, [acc]);
+      }
+    }
+    return map;
+  }, [accessories]);
+
   const itemEntries: CabinetEntry[] = useMemo(() => items.map(item => {
     const cat = getCategoryInfo('item', item.category ?? 'other');
     const activeDays = calculateOneTimeItemActiveDays(item);
     const archivedReason = item.archived_reason ?? (item.salvage_value > 0 ? 'sold' : 'paused');
     const isSold = item.status === 'archived' && archivedReason === 'sold';
     const isUnredeemed = item.status === 'unredeemed';
+    // 配件成本并入主件总价后计算日均，与详情页保持一致
+    const accessoryCost = calculateAccessoryTotalCost(accessoryIndexByItemId.get(item.id) ?? []);
+    const effectiveTotalPrice = item.total_price + accessoryCost;
     const subtitle = isSold
       ? `已售 ${formatCurrency(item.salvage_value)}`
       : isUnredeemed
         ? `日供 ${formatCurrency(calculateDailyDebt(item.monthly_payment ?? 0))}`
-        : `日均 ${formatCurrency(calculateDailyCost(item.total_price, 0, activeDays))}`;
+        : `日均 ${formatCurrency(calculateDailyCost(effectiveTotalPrice, 0, activeDays))}`;
     return {
       key: `item-${item.id}`,
       name: item.name,
@@ -121,7 +144,7 @@ export function CabinetScreen({ navigation }: Props) {
       status: item.status === 'archived' ? 'archived' : 'active',
       onPress: () => navigation.navigate('ItemDetail', { itemId: item.id }),
     };
-  }), [items, getCategoryInfo, navigation]);
+  }), [items, getCategoryInfo, navigation, accessoryIndexByItemId]);
 
   const subscriptionEntries: CabinetEntry[] = useMemo(() => subscriptions.map(sub => {
     const cat = getCategoryInfo('subscription', sub.category ?? 'other');

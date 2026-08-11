@@ -9,8 +9,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import type { CategoryInfo, OneTimeItem } from '../types';
+import type { Accessory, CategoryInfo, OneTimeItem } from '../types';
 import {
+  calculateAccessoryTotalCost,
   calculateDailyCost,
   calculateOneTimeItemActiveDays,
 } from '../utils/calculations';
@@ -26,6 +27,8 @@ interface AssetGroupedListProps {
   categories: CategoryInfo[];
   layoutMode: AssetLayout;
   onPressItem: (itemId: number) => void;
+  /** 按物品 id 索引的配件表，用于把配件成本并入日均成本与卡片展示 */
+  accessoriesByItem?: Map<number, Accessory[]>;
 }
 
 type AssetGroup = {
@@ -53,6 +56,7 @@ export function AssetGroupedList({
   categories,
   layoutMode,
   onPressItem,
+  accessoriesByItem,
 }: AssetGroupedListProps) {
   const { themeId } = useTheme();
   const styles = useMemo(() => createStyles(), [themeId]);
@@ -77,9 +81,12 @@ export function AssetGroupedList({
         categories.find(candidate => candidate.id === categoryId) ??
         (categoryId === 'other' ? OTHER_CATEGORY : { ...OTHER_CATEGORY, id: categoryId, name: categoryId });
 
+      // 配件成本并入主件总价后再算日均，与卡片显示保持一致
       const dailyCost = groupItems.reduce((sum, item) => {
         const activeDays = calculateOneTimeItemActiveDays(item);
-        return sum + calculateDailyCost(item.total_price, 0, activeDays);
+        const accessoryCost = calculateAccessoryTotalCost(accessoriesByItem?.get(item.id) ?? []);
+        const effectiveTotalPrice = item.total_price + accessoryCost;
+        return sum + calculateDailyCost(effectiveTotalPrice, 0, activeDays);
       }, 0);
 
       resolved.push({ category, items: groupItems, dailyCost });
@@ -88,7 +95,7 @@ export function AssetGroupedList({
     // 按日均成本降序，让最"贵"的分组更显眼
     resolved.sort((a, b) => b.dailyCost - a.dailyCost || b.items.length - a.items.length);
     return resolved;
-  }, [items, categories]);
+  }, [items, categories, accessoriesByItem]);
 
   function toggleGroup(categoryId: string) {
     setCollapsedGroups(prev => {
@@ -112,6 +119,7 @@ export function AssetGroupedList({
               item={item}
               layout="grid"
               style={styles.gridCard}
+              accessories={accessoriesByItem?.get(item.id)}
               onPress={() => onPressItem(item.id)}
             />
           ))}
@@ -124,6 +132,7 @@ export function AssetGroupedList({
       <ItemCard
         key={item.id}
         item={item}
+        accessories={accessoriesByItem?.get(item.id)}
         onPress={() => onPressItem(item.id)}
       />
     ));

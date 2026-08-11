@@ -19,6 +19,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type {
+  Accessory,
   MaintenanceLog,
   OneTimeItem,
   RootStackParamList,
@@ -26,6 +27,7 @@ import type {
   Subscription,
 } from '../types';
 import {
+  getAllAccessories,
   getAllMaintenanceLogs,
   getAllOneTimeItems,
   getAllStoredCards,
@@ -34,6 +36,7 @@ import {
 import { useTheme } from '../contexts/ThemeContext';
 import { THEME } from '../utils/constants';
 import {
+  calculateAccessoryTotalCost,
   calculateAssetHealth,
   calculateDailyCost,
   calculateNetAssetValue,
@@ -187,7 +190,23 @@ export function AnnualReportScreen({ route, navigation }: Props) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [storedCards, setStoredCards] = useState<StoredCard[]>([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([]);
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
   const [shareVisible, setShareVisible] = useState(false);
+
+  // 物品 id → 配件列表，用于把配件成本并入主件总价后计算日均/盈利
+  const accessoryIndexByItemId = useMemo(() => {
+    const map = new Map<number, Accessory[]>();
+    for (const acc of accessories) {
+      if (acc.entity_type !== 'item') continue;
+      const existing = map.get(acc.item_id);
+      if (existing) {
+        existing.push(acc);
+      } else {
+        map.set(acc.item_id, [acc]);
+      }
+    }
+    return map;
+  }, [accessories]);
 
   // 年份下限：取所有资产/订阅/卡包最早记录年份；无记录时回退到当前年
   const minYear = useMemo(() => {
@@ -216,16 +235,19 @@ export function AnnualReportScreen({ route, navigation }: Props) {
         nextSubscriptions,
         nextStoredCards,
         nextLogs,
+        nextAccessories,
       ] = await Promise.all([
         getAllOneTimeItems(db),
         getAllSubscriptions(db),
         getAllStoredCards(db),
         getAllMaintenanceLogs(db),
+        getAllAccessories(db),
       ]);
       setItems(nextItems);
       setSubscriptions(nextSubscriptions);
       setStoredCards(nextStoredCards);
       setMaintenanceLogs(nextLogs);
+      setAccessories(nextAccessories);
     } catch (error) {
       console.error('加载年度报告数据失败', error);
     }
@@ -255,13 +277,16 @@ export function AnnualReportScreen({ route, navigation }: Props) {
       .filter(item => item.status === 'active' || (item.status === 'archived' && item.archived_reason === 'sold'))
       .map(item => {
         const activeDays = calculateActiveDaysUpToYear(item, year);
-        const dailyCost = calculateDailyCost(item.total_price, 0, activeDays);
+        // 配件成本并入主件总价后计算日均，与详情页保持一致
+        const accessoryCost = calculateAccessoryTotalCost(accessoryIndexByItemId.get(item.id) ?? []);
+        const effectiveTotalPrice = item.total_price + accessoryCost;
+        const dailyCost = calculateDailyCost(effectiveTotalPrice, 0, activeDays);
         return { item, activeDays, dailyCost };
       })
       .filter(entry => entry.activeDays > 0)
       .sort((a, b) => a.dailyCost - b.dailyCost)
       .slice(0, 3);
-  }, [items, year]);
+  }, [items, year, accessoryIndexByItemId]);
 
   // ===================== 3. 年度售出资产（end_date 在该年份的已售出资产） =====================
   const soldSummary = useMemo(() => {
@@ -272,14 +297,17 @@ export function AnnualReportScreen({ route, navigation }: Props) {
         isDateInYear(item.end_date, year),
     );
     const rows = sold.map(item => {
-      const profit = calculateRealizedProfit(item.total_price, item.salvage_value);
+      // 配件成本并入主件总价后计算盈利，与详情页保持一致
+      const accessoryCost = calculateAccessoryTotalCost(accessoryIndexByItemId.get(item.id) ?? []);
+      const effectiveTotalPrice = item.total_price + accessoryCost;
+      const profit = calculateRealizedProfit(effectiveTotalPrice, item.salvage_value);
       return { item, profit };
     });
     const totalProfit = rows.reduce((sum, row) => sum + row.profit, 0);
     const totalRevenue = sold.reduce((sum, item) => sum + item.salvage_value, 0);
     const winnerCount = rows.filter(row => row.profit > 0).length;
     return { rows, totalProfit, totalRevenue, count: sold.length, winnerCount };
-  }, [items, year]);
+  }, [items, year, accessoryIndexByItemId]);
 
   // ===================== 4. 年度订阅支出汇总（按该年实际计费次数 × cycle_price） =====================
   const subscriptionSummary = useMemo(() => {
